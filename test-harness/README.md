@@ -71,7 +71,7 @@ docker exec -it media2ha-mosquitto mosquitto_pub -t 'media2ha/<device_id>/cmd/pl
 
 L'entité `media_player` apparaît automatiquement dans HA (intégration « MQTT Media Player »).
 
-**Limite** : publier un payload vide sur le topic discovery efface la config retenue mais **ne supprime pas** l'entité déjà créée ; celle-ci reste à retirer dans l'UI HA.
+**Suppression** : publier un payload vide sur le topic discovery supprime l'entité (et son entrée) dans HA ; republier la config la recrée.
 
 ## Arrêt
 

@@ -121,5 +121,5 @@ Le spec d'implémentation complet vit dans [`docs/SPEC.md`](docs/SPEC.md).
 ## Limites connues
 
 - Le composant `mqtt_media_player` utilisé est un **fork** (`MiCodesOrg/mqtt_media_player`) ; le chemin upstream n'expose pas encore mute/seek/power/source. Une PR amont est possible.
-- « Dépublier de Home Assistant » efface la découverte retenue et marque l'entité indisponible, mais ne supprime pas l'entité déjà créée : à retirer dans l'UI Home Assistant.
+- « Dépublier de Home Assistant » publie un payload vide : l'entité et son entrée sont supprimées (composant forké). Réenregistrer la config la recrée.
 - Compatibilité avec l'ancien topic `android_tv/playback_state` : non.
