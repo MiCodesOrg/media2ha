@@ -2,6 +2,8 @@ package fr.micodes.media2ha
 
 import android.content.ComponentName
 import android.content.Intent
+import android.database.ContentObserver
+import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.VolumeProvider
 import android.media.session.MediaController
@@ -10,6 +12,7 @@ import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.util.Log
 import java.util.concurrent.Executors
@@ -41,6 +44,15 @@ class MediaSessionListenerService : NotificationListenerService(),
     private var lastState: String? = null
     private var lastPositionSec: Long = -1
     private var lastPositionAtElapsed: Long = 0
+
+    private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
+
+    /** Republish the device volume when it changes (fallback sessions). */
+    private val volumeObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            mainHandler.post { activeController()?.let { publishVolume(it) } }
+        }
+    }
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val artworkExecutor = Executors.newSingleThreadExecutor { r ->
@@ -83,6 +95,7 @@ class MediaSessionListenerService : NotificationListenerService(),
         super.onCreate()
         config = Media2HaConfig(this)
         mediaSessionManager = getSystemService(MEDIA_SESSION_SERVICE) as MediaSessionManager
+        contentResolver.registerContentObserver(Settings.System.CONTENT_URI, true, volumeObserver)
         ensureMqtt()
     }
 
@@ -109,6 +122,7 @@ class MediaSessionListenerService : NotificationListenerService(),
         super.onDestroy()
         stopPositionLoop()
         runCatching { mediaSessionManager.removeOnActiveSessionsChangedListener(this) }
+        runCatching { contentResolver.unregisterContentObserver(volumeObserver) }
         mqtt?.disconnect()
         artworkExecutor.shutdownNow()
     }
@@ -275,11 +289,25 @@ class MediaSessionListenerService : NotificationListenerService(),
         if (state == "playing") startPositionLoop() else stopPositionLoop()
     }
 
+    /**
+     * Prefer the session's own absolute volume scale. When a session declares
+     * [VolumeProvider.VOLUME_CONTROL_ABSOLUTE] with `maxVolume == 0` (common for local
+     * video apps that defer to the device stream), fall back to the system STREAM_MUSIC
+     * volume so the HA slider still controls something real.
+     */
     private fun publishVolume(controller: MediaController) {
+        val info = controller.playbackInfo
+        if (info != null && info.volumeControl == VolumeProvider.VOLUME_CONTROL_ABSOLUTE && info.maxVolume > 0) {
+            publishVolumeLevel(info.currentVolume.toFloat() / info.maxVolume)
+            return
+        }
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (max <= 0) return
+        publishVolumeLevel(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max)
+    }
+
+    private fun publishVolumeLevel(level: Float) {
         val t = topics ?: return
-        val info = controller.playbackInfo ?: return
-        if (info.volumeControl != VolumeProvider.VOLUME_CONTROL_ABSOLUTE || info.maxVolume <= 0) return
-        val level = info.currentVolume.toFloat() / info.maxVolume
         val rounded = (level * 100).roundToInt() / 100.0
         publishIfChanged(t.volume, rounded.toString(), true, false)
     }
@@ -368,12 +396,17 @@ class MediaSessionListenerService : NotificationListenerService(),
     }
 
     private fun applyVolume(controller: MediaController, payload: String) {
-        val value = payload.trim().toFloatOrNull() ?: return
-        val clamped = value.coerceIn(0f, 1f)
-        val info = controller.playbackInfo ?: return
-        if (info.volumeControl != VolumeProvider.VOLUME_CONTROL_ABSOLUTE || info.maxVolume <= 0) return
-        val target = (clamped * info.maxVolume).roundToInt().coerceIn(0, info.maxVolume)
-        controller.setVolumeTo(target, 0)
+        val value = payload.trim().toFloatOrNull()?.coerceIn(0f, 1f) ?: return
+        val info = controller.playbackInfo
+        if (info != null && info.volumeControl == VolumeProvider.VOLUME_CONTROL_ABSOLUTE && info.maxVolume > 0) {
+            val target = (value * info.maxVolume).roundToInt().coerceIn(0, info.maxVolume)
+            controller.setVolumeTo(target, 0)
+            return
+        }
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (max <= 0) return
+        val target = (value * max).roundToInt().coerceIn(0, max)
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
     }
 
     companion object {

@@ -130,11 +130,11 @@ Référence : [issue #10](https://github.com/Miloune/android_relay/issues/10). L
 | `playpause` | toggle play/pause | géré si reçu |
 | `next` | `skipToNext()` | `ACTION_SKIP_TO_NEXT` |
 | `previous` | `skipToPrevious()` | `ACTION_SKIP_TO_PREVIOUS` |
-| `volume` | `setVolumeTo(round(v × maxVolume))` | `VOLUME_CONTROL_ABSOLUTE` |
+| `volume` | session absolue si `maxVolume > 0`, sinon `AudioManager` `STREAM_MUSIC` | — |
 
 - Chaque action vérifie `PlaybackState.getActions()` ; échec silencieux + log, sans modifier l'état publié.
-- `volume` : payload borné `[0.0, 1.0]` ; en `RELATIVE`/`FIXED`, commande ignorée et aucun niveau publié.
-- État volume republié via `onAudioInfoChanged`.
+- `volume` : payload borné `[0.0, 1.0]`. Si la session expose une échelle absolue (`VOLUME_CONTROL_ABSOLUTE` avec `maxVolume > 0`) → `setVolumeTo` ; sinon (cas fréquent des apps vidéo locales : `ABSOLUTE` avec `maxVolume = 0`) → repli sur le volume système `STREAM_MUSIC` via `AudioManager`.
+- Le niveau publié suit la même priorité ; un `ContentObserver` sur `Settings.System` republie le volume après un changement externe (télécommande).
 - **`command_playpause_topic` n'est jamais émis par le composant** : configurer `play` et `pause` séparément ; `playpause` reste forward-compat.
 
 ## 7. Artwork
