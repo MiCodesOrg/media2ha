@@ -99,7 +99,7 @@ Référence : [issue #8](https://github.com/Miloune/android_relay/issues/8).
 }
 ```
 
-`origin` non supporté → omis. Un payload **vide retained** sur le topic discovery supprime l'entité.
+`origin` non supporté → omis. Un payload **vide retained** sur le topic discovery efface la config retenue. **Le composant ne supprime pas pour autant l'entité déjà créée** : elle reste présente (marquée indisponible) et doit être retirée dans l'UI Home Assistant.
 
 ## 5. Modèle d'état
 
@@ -152,7 +152,7 @@ Référence : [issue #11](https://github.com/Miloune/android_relay/issues/11). C
 - Hôte **vide par défaut** — saisie explicite de l'IP.
 - **Aucune découverte broker** (pas de mDNS fiable, pas de scan de port). Browse mDNS best-effort noté en fog.
 - **Aucune migration** depuis l'ancienne config du fork : on repart de zéro.
-- Actions : **Tester la connexion** (publie discovery + `online`) et **Supprimer de Home Assistant** (payload vide retained).
+- Actions : **Tester la connexion** (publie discovery + `online`) et **Dépublier de Home Assistant** (payload vide retained sur la découverte + disponibilité `offline`). L'entité existante n'est pas supprimée par le composant ; elle reste à retirer dans l'UI HA.
 - Statut affiché : permission Notification Access, connexion MQTT, discovery publié.
 
 ## 9. Performance
@@ -189,5 +189,5 @@ Référence : [issue #5](https://github.com/Miloune/android_relay/issues/5). Voi
 - L'app compile et tourne sur **API 23** et **API 34**.
 - À la connexion, l'entité `media_player` apparaît automatiquement dans HA via le composant.
 - État, métadonnées, artwork et volume remontent ; play/pause/next/previous/volume agissent sur la session active.
-- Le retrait publie un payload vide et l'entité disparaît.
+- Le retrait publie un payload vide et marque l'entité indisponible ; la suppression définitive se fait dans HA.
 - Aucun wakelock, pas de polling ; budgets perf constatés et documentés.

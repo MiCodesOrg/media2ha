@@ -315,7 +315,12 @@ class MediaSessionListenerService : NotificationListenerService(),
 
     private fun handleCommand(topic: String, payload: String) {
         val t = topics ?: return
-        val controller = activeController() ?: return
+        Log.d(TAG, "Commande reçue: $topic = $payload")
+        val controller = activeController()
+        if (controller == null) {
+            Log.d(TAG, "Commande ignorée: aucune session active")
+            return
+        }
         val actions = controller.playbackState?.actions ?: 0L
 
         when (topic) {
