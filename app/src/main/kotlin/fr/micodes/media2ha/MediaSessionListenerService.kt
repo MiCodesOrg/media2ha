@@ -13,6 +13,7 @@ import android.os.SystemClock
 import android.service.notification.NotificationListenerService
 import android.util.Log
 import java.util.concurrent.Executors
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -37,6 +38,9 @@ class MediaSessionListenerService : NotificationListenerService(),
     private val callbacks = mutableMapOf<String, MediaController.Callback>()
     private val lastPayloads = mutableMapOf<String, String>()
     private var lastArtHash: String? = null
+    private var lastState: String? = null
+    private var lastPositionSec: Long = -1
+    private var lastPositionAtElapsed: Long = 0
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val artworkExecutor = Executors.newSingleThreadExecutor { r ->
@@ -46,7 +50,7 @@ class MediaSessionListenerService : NotificationListenerService(),
 
     private val positionLoop = object : Runnable {
         override fun run() {
-            publishPosition()
+            publishPosition(force = true)
             mainHandler.postDelayed(this, POSITION_RESYNC_MS)
         }
     }
@@ -238,13 +242,17 @@ class MediaSessionListenerService : NotificationListenerService(),
             publishIfChanged(t.position, "", false, force)
             publishIfChanged(t.albumArt, "", false, force)
             lastArtHash = null
+            lastState = null
+            lastPositionSec = -1
             stopPositionLoop()
             return
         }
 
         val playbackState = controller.playbackState
         val state = mapState(playbackState?.state)
+        val stateChanged = force || state != lastState
         publishIfChanged(t.state, state, true, force)
+        lastState = state
 
         val metadata = controller.metadata
         publishIfChanged(t.title, metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty(), true, force)
@@ -261,7 +269,7 @@ class MediaSessionListenerService : NotificationListenerService(),
         publishIfChanged(t.mediatype, mediaType(metadata), true, force)
 
         publishVolume(controller)
-        publishPosition()
+        publishPosition(stateChanged)
         publishArtwork(metadata, force)
 
         if (state == "playing") startPositionLoop() else stopPositionLoop()
@@ -276,12 +284,24 @@ class MediaSessionListenerService : NotificationListenerService(),
         publishIfChanged(t.volume, rounded.toString(), true, false)
     }
 
-    private fun publishPosition() {
+    /**
+     * Position is published on real transitions (play/pause/track), on a detected seek
+     * (a jump from the extrapolated position), and by the 30 s resync loop. Steady
+     * playback callbacks do not republish it, so the broker is not spammed.
+     */
+    private fun publishPosition(force: Boolean) {
         val t = topics ?: return
         val controller = activeController() ?: return
         val state = controller.playbackState ?: return
-        val positionSeconds = currentPositionMs(state) / 1000
-        mqtt?.publish(t.position, positionSeconds.toString(), false)
+        val seconds = currentPositionMs(state) / 1000
+        val now = SystemClock.elapsedRealtime()
+        if (!force && lastPositionSec >= 0) {
+            val expected = lastPositionSec + (now - lastPositionAtElapsed) / 1000
+            if (abs(seconds - expected) <= SEEK_THRESHOLD_SECONDS) return
+        }
+        lastPositionSec = seconds
+        lastPositionAtElapsed = now
+        mqtt?.publish(t.position, seconds.toString(), false)
     }
 
     private fun publishArtwork(metadata: MediaMetadata?, force: Boolean) {
@@ -359,6 +379,7 @@ class MediaSessionListenerService : NotificationListenerService(),
     companion object {
         private const val TAG = "Media2HA"
         private const val POSITION_RESYNC_MS = 30_000L
+        private const val SEEK_THRESHOLD_SECONDS = 3L
         private const val METADATA_KEY_MIME = "android.media.metadata.MIME"
     }
 }
