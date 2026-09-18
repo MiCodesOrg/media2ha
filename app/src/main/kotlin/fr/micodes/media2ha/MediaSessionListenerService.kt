@@ -150,7 +150,7 @@ class MediaSessionListenerService : NotificationListenerService(),
 
     private fun startMqtt() {
         mqtt?.disconnect()
-        val t = Topics(config.deviceId)
+        val t = Topics(config.deviceId, config.discoveryPrefix)
         topics = t
         lastPayloads.clear()
         lastArtHash = null

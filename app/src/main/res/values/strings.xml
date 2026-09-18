@@ -21,6 +21,7 @@
     <string name="hint_password">Mot de passe</string>
     <string name="hint_device_name">Nom de l\'appareil</string>
     <string name="hint_device_id">Identifiant (device_id)</string>
+    <string name="hint_discovery_prefix">Préfixe de découverte (homeassistant)</string>
 
     <string name="auth_toggle">Identifiants MQTT</string>
     <string name="test_connection">Tester la connexion</string>

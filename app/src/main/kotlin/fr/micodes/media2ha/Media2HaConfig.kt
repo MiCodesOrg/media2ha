@@ -30,6 +30,15 @@ class Media2HaConfig(private val context: Context) {
         get() = prefs.getString(KEY_PASSWORD, "") ?: ""
         set(value) = prefs.edit().putString(KEY_PASSWORD, value).apply()
 
+    /** MQTT discovery prefix configured in Home Assistant (default `homeassistant`). */
+    var discoveryPrefix: String
+        get() = prefs.getString(KEY_DISCOVERY_PREFIX, null)
+            ?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_DISCOVERY_PREFIX
+        set(value) = prefs.edit()
+            .putString(KEY_DISCOVERY_PREFIX, value.trim().ifBlank { DEFAULT_DISCOVERY_PREFIX })
+            .apply()
+
     var deviceName: String
         get() {
             val stored = prefs.getString(KEY_DEVICE_NAME, null)
@@ -69,12 +78,14 @@ class Media2HaConfig(private val context: Context) {
         private const val KEY_USE_AUTH = "use_auth"
         private const val KEY_USERNAME = "username"
         private const val KEY_PASSWORD = "password"
+        private const val KEY_DISCOVERY_PREFIX = "discovery_prefix"
         private const val KEY_DEVICE_NAME = "device_name"
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_LAST_STATUS = "last_status"
         private const val KEY_LAST_STATUS_ERROR = "last_status_error"
 
         const val DEFAULT_PORT = 1883
+        const val DEFAULT_DISCOVERY_PREFIX = "homeassistant"
         private const val DEVICE_NAME_FALLBACK = "Android TV"
 
         fun defaultDeviceId(context: Context, name: String): String {

@@ -27,6 +27,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var passwordEdit: EditText
     private lateinit var deviceNameEdit: EditText
     private lateinit var deviceIdEdit: EditText
+    private lateinit var prefixEdit: EditText
     private lateinit var statusText: TextView
     private lateinit var permissionButton: Button
     private lateinit var adbInstructions: TextView
@@ -51,6 +52,7 @@ class MainActivity : AppCompatActivity() {
         passwordEdit = findViewById(R.id.mqtt_password_edit)
         deviceNameEdit = findViewById(R.id.mqtt_device_name_edit)
         deviceIdEdit = findViewById(R.id.mqtt_device_id_edit)
+        prefixEdit = findViewById(R.id.mqtt_prefix_edit)
         statusText = findViewById(R.id.status_text)
         permissionButton = findViewById(R.id.permission_button)
         adbInstructions = findViewById(R.id.adb_instructions)
@@ -82,6 +84,7 @@ class MainActivity : AppCompatActivity() {
         passwordEdit.setText(config.password)
         deviceNameEdit.setText(config.deviceName)
         deviceIdEdit.setText(config.deviceId)
+        prefixEdit.setText(config.discoveryPrefix)
         loading = false
     }
 
@@ -137,6 +140,7 @@ class MainActivity : AppCompatActivity() {
         config.deviceName = name
         val id = deviceIdEdit.text.toString().trim()
         config.deviceId = if (id.isBlank()) Media2HaConfig.defaultDeviceId(this, name) else id
+        config.discoveryPrefix = prefixEdit.text.toString()
         return true
     }
 
@@ -144,7 +148,7 @@ class MainActivity : AppCompatActivity() {
         if (testing) return
         if (!persistConfig()) return
         testing = true
-        val topics = Topics(config.deviceId)
+        val topics = Topics(config.deviceId, config.discoveryPrefix)
         testResultText.text = getString(R.string.testing)
         testResultText.setTextColor(getColor(R.color.text_secondary))
 
@@ -196,7 +200,7 @@ class MainActivity : AppCompatActivity() {
             toast(getString(R.string.host_required))
             return
         }
-        val topics = Topics(config.deviceId)
+        val topics = Topics(config.deviceId, config.discoveryPrefix)
         val manager = MqttClientManager(
             serverUri = config.serverUri(),
             clientId = MqttClientManager.transientClientId(config.deviceId),

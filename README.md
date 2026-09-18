@@ -47,6 +47,7 @@ Champs exposés (et rien d'autre) :
 | Identifiants | désactivé | utilisateur / mot de passe |
 | Nom d'appareil | `Build.MODEL` | nom affiché dans Home Assistant |
 | `device_id` | slug du nom + suffixe stable | identifiant MQTT, prérempli et modifiable (`[a-z0-9_]`) |
+| Préfixe de découverte | `homeassistant` | à faire correspondre au préfixe MQTT discovery de Home Assistant |
 
 Actions : **Tester la connexion** (publie la découverte + `online`) et **Dépublier de Home Assistant** (payload vide + `offline`).
 
@@ -56,7 +57,7 @@ Namespace runtime : `media2ha/<device_id>`.
 
 | Rôle | Topic | Retained |
 |---|---|---|
-| Découverte | `homeassistant/media_player/<device_id>/config` | oui |
+| Découverte | `<préfixe>/media_player/<device_id>/config` | oui |
 | Disponibilité | `media2ha/<device_id>/availability` (`online`/`offline`) | oui |
 | État | `.../state` | oui |
 | Titre / Artiste / Album | `.../title`, `.../artist`, `.../album` | oui |

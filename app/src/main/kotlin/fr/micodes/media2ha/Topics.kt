@@ -1,7 +1,7 @@
 package fr.micodes.media2ha
 
 /** Topic layout, per the spec: runtime namespace is `media2ha/<device_id>`. */
-class Topics(deviceId: String) {
+class Topics(deviceId: String, discoveryPrefix: String = "homeassistant") {
     private val base = "media2ha/$deviceId"
 
     val availability = "$base/availability"
@@ -31,8 +31,8 @@ class Topics(deviceId: String) {
 
     val cmdWildcard = "$cmd/+"
 
-    /** Discovery topic is fixed by the bkbilly component. */
-    val discovery = "homeassistant/media_player/$deviceId/config"
+    /** Discovery topic: `<discovery_prefix>/media_player/<device_id>/config`. */
+    val discovery = "${discoveryPrefix.trim('/')}/media_player/$deviceId/config"
 
     companion object {
         const val PAYLOAD_ONLINE = "online"

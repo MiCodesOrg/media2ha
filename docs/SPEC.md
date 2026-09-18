@@ -40,7 +40,7 @@ Package Kotlin sous `fr.micodes.media2ha`. Le rebrand remplace l'applicationId d
 Référence : [issue #8](https://github.com/MiCodesOrg/media2ha/issues/8).
 
 ### Identité
-- Topic discovery : `homeassistant/media_player/<device_id>/config`, payload JSON **retained**. Préfixe `homeassistant` imposé par le composant.
+- Topic discovery : `<préfixe>/media_player/<device_id>/config`, payload JSON **retained**. Préfixe par défaut `homeassistant`, configurable côté app et lu par le composant depuis l'intégration MQTT de Home Assistant.
 - `device_id` : **un seul segment** `[a-z0-9_]`, sert d'`unique_id` HA. Défaut = slug du nom d'appareil + court suffixe stable dérivé du matériel (ex. `tv_salon_a1b2`), **prérempli et éditable**.
 - Le `name` du payload est le nom affiché (`Build.MODEL` par défaut).
 
@@ -163,7 +163,7 @@ Référence : [issue #6](https://github.com/MiCodesOrg/media2ha/issues/6). Base6
 
 ## 8. Configuration
 
-Référence : [issue #11](https://github.com/MiCodesOrg/media2ha/issues/11). Champs uniquement : **hôte**, **port** (défaut `1883`), **auth** (+ user/pass), **nom d'appareil**, **`device_id`** (visible, validé `[a-z0-9_]`).
+Référence : [issue #11](https://github.com/MiCodesOrg/media2ha/issues/11). Champs uniquement : **hôte**, **port** (défaut `1883`), **auth** (+ user/pass), **nom d'appareil**, **`device_id`** (visible, validé `[a-z0-9_]`), **préfixe de découverte** (défaut `homeassistant`).
 
 - Hôte **vide par défaut** — saisie explicite de l'IP.
 - **Aucune découverte broker** (pas de mDNS fiable, pas de scan de port). Browse mDNS best-effort noté en fog.
