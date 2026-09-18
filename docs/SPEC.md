@@ -2,7 +2,7 @@
 
 > Spec d'implémentation du fork **Media2HA** (`fr.micodes.media2ha`) : relais média Android ↔ Home Assistant via MQTT, exposant un `media_player` complet. Android 6+.
 >
-> Carte d'origine : [Wayfinder: Media2HA](https://github.com/Miloune/android_relay/issues/1). Chaque décision ci-dessous vit dans son ticket ; les liens pointent vers le détail et la justification.
+> Carte d'origine : [Wayfinder: Media2HA](https://github.com/MiCodesOrg/media2ha/issues/1). Chaque décision ci-dessous vit dans son ticket ; les liens pointent vers le détail et la justification.
 
 ## 1. Objectif
 
@@ -13,7 +13,7 @@ Fork de [`saihgupr/android_relay`](https://github.com/saihgupr/android_relay), a
 - **recevoir** les commandes HA sur MQTT (play, pause, next, previous, volume) ;
 - rester **simple, léger et performant**.
 
-Home Assistant ne supporte **pas nativement** de `media_player` MQTT. L'entité est fournie par l'intégration custom HACS [`bkbilly/mqtt_media_player`](https://github.com/bkbilly/mqtt_media_player). Référence : [issue #2](https://github.com/Miloune/android_relay/issues/2).
+Home Assistant ne supporte **pas nativement** de `media_player` MQTT. L'entité est fournie par l'intégration custom HACS [`bkbilly/mqtt_media_player`](https://github.com/bkbilly/mqtt_media_player). Référence : [issue #2](https://github.com/MiCodesOrg/media2ha/issues/2).
 
 ## 2. Identité & plateforme
 
@@ -28,7 +28,7 @@ Package Kotlin sous `fr.micodes.media2ha`. Le rebrand remplace l'applicationId d
 
 ## 3. Connexion MQTT
 
-- Client : **Eclipse Paho `org.eclipse.paho.client.mqttv3:1.2.5` nu**. Retirer `org.eclipse.paho.android.service` (déprécié). Référence : [issue #4](https://github.com/Miloune/android_relay/issues/4), [issue #9](https://github.com/Miloune/android_relay/issues/9).
+- Client : **Eclipse Paho `org.eclipse.paho.client.mqttv3:1.2.5` nu**. Retirer `org.eclipse.paho.android.service` (déprécié). Référence : [issue #4](https://github.com/MiCodesOrg/media2ha/issues/4), [issue #9](https://github.com/MiCodesOrg/media2ha/issues/9).
 - **Temps réel** : socket TCP permanent, `messageArrived` livré immédiatement (pas de WorkManager, contrairement à hannesa2).
 - Propriétaire : le `NotificationListenerService` existant (system-bound, re-lié au boot) + un **foreground service** léger (API 26+, `foregroundServiceType="connectedDevice"`) pour garantir la survie du process.
 - `setAutomaticReconnect(true)` ; sur `MqttCallbackExtended.connectComplete` : **resubscribe** au topic de commande, **republier** la config discovery et l'état, publier `online`.
@@ -37,7 +37,7 @@ Package Kotlin sous `fr.micodes.media2ha`. Le rebrand remplace l'applicationId d
 
 ## 4. Découverte & topics
 
-Référence : [issue #8](https://github.com/Miloune/android_relay/issues/8).
+Référence : [issue #8](https://github.com/MiCodesOrg/media2ha/issues/8).
 
 ### Identité
 - Topic discovery : `homeassistant/media_player/<device_id>/config`, payload JSON **retained**. Préfixe `homeassistant` imposé par le composant.
@@ -103,7 +103,7 @@ Référence : [issue #8](https://github.com/Miloune/android_relay/issues/8).
 
 ## 5. Modèle d'état
 
-Référence : [issue #7](https://github.com/Miloune/android_relay/issues/7). Une seule entité = la **session active** (celle qui joue, sinon la plus récemment mise à jour). Les sessions fantômes sont dédupliquées par package.
+Référence : [issue #7](https://github.com/MiCodesOrg/media2ha/issues/7). Une seule entité = la **session active** (celle qui joue, sinon la plus récemment mise à jour). Les sessions fantômes sont dédupliquées par package.
 
 | `PlaybackState` Android | État HA |
 |---|---|
@@ -121,7 +121,7 @@ Référence : [issue #7](https://github.com/Miloune/android_relay/issues/7). Une
 
 ## 6. Commandes
 
-Référence : [issue #10](https://github.com/Miloune/android_relay/issues/10). L'app s'abonne à `media2ha/<device_id>/cmd/+` et dispatche par suffixe.
+Référence : [issue #10](https://github.com/MiCodesOrg/media2ha/issues/10). L'app s'abonne à `media2ha/<device_id>/cmd/+` et dispatche par suffixe.
 
 | Commande | Action Android | Garde |
 |---|---|---|
@@ -139,7 +139,7 @@ Référence : [issue #10](https://github.com/Miloune/android_relay/issues/10). L
 
 ## 7. Artwork
 
-Référence : [issue #6](https://github.com/Miloune/android_relay/issues/6). Base64 JPEG sur `.../albumart`, non retained.
+Référence : [issue #6](https://github.com/MiCodesOrg/media2ha/issues/6). Base64 JPEG sur `.../albumart`, non retained.
 
 - Source : `METADATA_KEY_ALBUM_ART` → repli `METADATA_KEY_ART`.
 - Encodage : 512 px max (plus grand côté), JPEG qualité 80, sur thread de fond.
@@ -147,7 +147,7 @@ Référence : [issue #6](https://github.com/Miloune/android_relay/issues/6). Bas
 
 ## 8. Configuration
 
-Référence : [issue #11](https://github.com/Miloune/android_relay/issues/11). Champs uniquement : **hôte**, **port** (défaut `1883`), **auth** (+ user/pass), **nom d'appareil**, **`device_id`** (visible, validé `[a-z0-9_]`).
+Référence : [issue #11](https://github.com/MiCodesOrg/media2ha/issues/11). Champs uniquement : **hôte**, **port** (défaut `1883`), **auth** (+ user/pass), **nom d'appareil**, **`device_id`** (visible, validé `[a-z0-9_]`).
 
 - Hôte **vide par défaut** — saisie explicite de l'IP.
 - **Aucune découverte broker** (pas de mDNS fiable, pas de scan de port). Browse mDNS best-effort noté en fog.
@@ -157,7 +157,7 @@ Référence : [issue #11](https://github.com/Miloune/android_relay/issues/11). C
 
 ## 9. Performance
 
-Référence : [issue #12](https://github.com/Miloune/android_relay/issues/12). **Cibles indicatives, non bloquantes** :
+Référence : [issue #12](https://github.com/MiCodesOrg/media2ha/issues/12). **Cibles indicatives, non bloquantes** :
 
 | Métrique | Cible |
 |---|---|
@@ -171,7 +171,7 @@ Aucun wakelock, aucun polling ; resync position seulement en lecture. Mesure : `
 
 ## 10. Banc de test
 
-Référence : [issue #5](https://github.com/Miloune/android_relay/issues/5). Voir `test-harness/` : `docker compose up -d` lance Mosquitto + Home Assistant avec MQTT discovery ; installer le composant custom dans `custom_components/`. Créer un AVD API 23 (l'existant est API 34) ; depuis l'émulateur, le broker est sur `10.0.2.2:1883`.
+Référence : [issue #5](https://github.com/MiCodesOrg/media2ha/issues/5). Voir `test-harness/` : `docker compose up -d` lance Mosquitto + Home Assistant avec MQTT discovery ; installer le composant custom dans `custom_components/`. Créer un AVD API 23 (l'existant est API 34) ; depuis l'émulateur, le broker est sur `10.0.2.2:1883`.
 
 ## 11. Hors périmètre
 
@@ -181,7 +181,7 @@ Référence : [issue #5](https://github.com/Miloune/android_relay/issues/5). Voi
 
 ## 12. Différé
 
-- [Support mute / seek / turn_on-off](https://github.com/Miloune/android_relay/issues/14) — absent du composant ; à traiter après le reste, éventuellement par contribution upstream ou fork.
+- [Support mute / seek / turn_on-off](https://github.com/MiCodesOrg/media2ha/issues/14) — absent du composant ; à traiter après le reste, éventuellement par contribution upstream ou fork.
 - App/source dans HA (même ticket).
 
 ## 13. Définition de « fini »
