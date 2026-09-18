@@ -7,12 +7,30 @@ android {
     namespace 'fr.micodes.media2ha'
     compileSdk 34
 
+    def envCode = System.getenv("VERSION_CODE")
+    def envName = System.getenv("VERSION_NAME")
+    def envKeystore = System.getenv("KEYSTORE_FILE")
+
     defaultConfig {
         applicationId "fr.micodes.media2ha"
         minSdk 23
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0"
+        // Version injected by the release pipeline; sensible defaults locally.
+        versionCode(envCode ? envCode.toInteger() : 1)
+        versionName(envName ?: "1.0")
+    }
+
+    signingConfigs {
+        release {
+            // CI decodes the keystore to app/release-keystore.jks and sets the env vars.
+            // Left empty locally so unsigned builds keep working.
+            if (envKeystore) {
+                storeFile file(envKeystore)
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
     }
 
     buildFeatures {
@@ -21,6 +39,10 @@ android {
 
     buildTypes {
         release {
+            // Only sign when the pipeline provided a keystore.
+            if (envKeystore) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

@@ -119,6 +119,34 @@ Banc de test local (Mosquitto + Home Assistant + composant custom) : voir [`test
 
 Le spec d'implémentation complet vit dans [`docs/SPEC.md`](docs/SPEC.md).
 
+## Release
+
+Le pipeline `.github/workflows/release.yml` se déclenche sur un tag `vX.Y.Z` :
+
+1. `versionName` = tag sans `v` ; `versionCode` = `MAJOR × 10000 + MINOR × 100 + PATCH`.
+2. Décode le keystore, construit l'**AAB signé** et l'**APK signé**.
+3. Publie sur **Google Play** (track `internal`) via un compte de service.
+4. Crée une **GitHub Release** avec l'AAB, l'APK et `mapping.txt`.
+
+Secrets à définir dans l'environment GitHub `PROD` :
+
+| Secret | Rôle |
+|---|---|
+| `KEYSTORE_BASE64` | keystore `.jks` encodé en base64 |
+| `KEYSTORE_PASSWORD` | mot de passe du keystore |
+| `KEY_ALIAS` | alias de la clé |
+| `KEY_PASSWORD` | mot de passe de la clé |
+| `SERVICE_ACCOUNT_JSON` | JSON du compte de service Play Console |
+
+En local, `app/build.gradle` lit `VERSION_CODE` / `VERSION_NAME` / `KEYSTORE_*` s'ils sont définis ; sinon valeurs par défaut et build non signé.
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Prérequis : l'app `fr.micodes.media2ha` doit exister dans la Play Console et le compte de service doit avoir les droits de publication.
+
 ## Limites connues
 
 - Le composant `mqtt_media_player` utilisé est un **fork** (`MiCodesOrg/mqtt_media_player`) ; le chemin upstream n'expose pas encore mute/seek/power/source. Une PR amont est possible.

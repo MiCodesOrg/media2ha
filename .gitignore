@@ -22,3 +22,8 @@ captures/
 *.dex
 *.class
 .git-backup-*
+
+# Signing
+keystore*
+*.jks
+*.keystore
