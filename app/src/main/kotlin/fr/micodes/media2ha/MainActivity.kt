@@ -113,7 +113,6 @@ class MainActivity : AppCompatActivity() {
                 NotificationListenerService.requestRebind(
                     ComponentName(this, MediaSessionListenerService::class.java)
                 )
-                MqttForegroundService.start(this)
                 toast(getString(R.string.saved))
                 updateStatus()
             }

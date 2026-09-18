@@ -30,7 +30,7 @@ Package Kotlin sous `fr.micodes.media2ha`. Le rebrand remplace l'applicationId d
 
 - Client : **Eclipse Paho `org.eclipse.paho.client.mqttv3:1.2.5` nu**. Retirer `org.eclipse.paho.android.service` (déprécié). Référence : [issue #4](https://github.com/MiCodesOrg/media2ha/issues/4), [issue #9](https://github.com/MiCodesOrg/media2ha/issues/9).
 - **Temps réel** : socket TCP permanent, `messageArrived` livré immédiatement (pas de WorkManager, contrairement à hannesa2).
-- Propriétaire : le `NotificationListenerService` existant (system-bound, re-lié au boot) + un **foreground service** léger (API 26+, `foregroundServiceType="connectedDevice"`) pour garantir la survie du process.
+- Propriétaire : le `NotificationListenerService` existant (system-bound, re-lié au boot) ; pas de foreground service, donc aucune déclaration Play liée aux FGS.
 - `setAutomaticReconnect(true)` ; sur `MqttCallbackExtended.connectComplete` : **resubscribe** au topic de commande, **republier** la config discovery et l'état, publier `online`.
 - LWT sur `media2ha/<device_id>/availability` = `offline` ; `cleanSession=false`, QoS 1.
 

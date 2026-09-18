@@ -2,8 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
     <!-- Resolve the label of the app owning the active media session (Android 11+ visibility). -->
     <queries>
@@ -43,11 +41,6 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
-
-        <service
-            android:name=".MqttForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
 
     </application>
 </manifest>

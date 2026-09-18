@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Media2HA</string>
-    <string name="foreground_notification">Connexion MQTT active</string>
 
     <string name="header_title">Media2HA</string>
     <string name="header_subtitle">Relais média Android vers Home Assistant</string>
