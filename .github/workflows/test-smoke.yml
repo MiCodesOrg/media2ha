@@ -1,6 +1,8 @@
 name: Test smoke
 on:
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   call:
     uses: MiCodesOrg/.github/.github/workflows/smoke.yml@main
