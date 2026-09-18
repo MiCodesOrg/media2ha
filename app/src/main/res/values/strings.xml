@@ -1,4 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Android Relay</string>
+    <string name="app_name">Media2HA</string>
+    <string name="foreground_notification">Connexion MQTT active</string>
+
+    <string name="header_title">Media2HA</string>
+    <string name="header_subtitle">Relais média Android vers Home Assistant</string>
+
+    <string name="section_status">État du service</string>
+    <string name="section_config">Configuration MQTT</string>
+
+    <string name="status_permission">Permission requise</string>
+    <string name="status_unconfigured">Broker non configuré</string>
+    <string name="status_waiting">En attente de connexion</string>
+    <string name="grant_permission">Autoriser l\'accès</string>
+    <string name="adb_instructions">Autoriser via ADB :\nadb shell cmd notification allow_listener fr.micodes.media2ha/.MediaSessionListenerService</string>
+
+    <string name="hint_host">IP du broker (ex. 192.168.1.199)</string>
+    <string name="hint_port">Port (1883)</string>
+    <string name="hint_username">Utilisateur</string>
+    <string name="hint_password">Mot de passe</string>
+    <string name="hint_device_name">Nom de l\'appareil</string>
+    <string name="hint_device_id">Identifiant (device_id)</string>
+
+    <string name="auth_toggle">Identifiants MQTT</string>
+    <string name="test_connection">Tester la connexion</string>
+    <string name="remove_from_ha">Retirer de Home Assistant</string>
+    <string name="save_config">Enregistrer et redémarrer</string>
+
+    <string name="saved">Configuration enregistrée</string>
+    <string name="host_required">Renseigne l\'IP du broker</string>
+    <string name="testing">Connexion au broker…</string>
+    <string name="test_ok">Connecté, découverte publiée</string>
+    <string name="test_failed">Échec : %1$s</string>
+    <string name="removed">Entité retirée de Home Assistant</string>
 </resources>

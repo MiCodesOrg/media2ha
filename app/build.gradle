@@ -4,15 +4,19 @@ plugins {
 }
 
 android {
-    namespace 'com.saihgupr.androidrelay'
+    namespace 'fr.micodes.media2ha'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.saihgupr.androidrelay"
-        minSdk 21
+        applicationId "fr.micodes.media2ha"
+        minSdk 23
         targetSdk 34
-        versionCode 4
-        versionName "1.0.1"
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {
@@ -31,7 +35,7 @@ android {
 
     applicationVariants.all { variant ->
         variant.outputs.all {
-            outputFileName = "android-relay.apk"
+            outputFileName = "media2ha.apk"
         }
     }
 }
@@ -40,5 +44,4 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.9.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
-    implementation 'org.eclipse.paho:org.eclipse.paho.android.service:1.1.1'
 }
