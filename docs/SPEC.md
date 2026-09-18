@@ -32,7 +32,6 @@ Package Kotlin sous `fr.micodes.media2ha`. Le rebrand remplace l'applicationId d
 - **Temps réel** : socket TCP permanent, `messageArrived` livré immédiatement (pas de WorkManager, contrairement à hannesa2).
 - Propriétaire : le `NotificationListenerService` existant (system-bound, re-lié au boot) + un **foreground service** léger (API 26+, `foregroundServiceType="connectedDevice"`) pour garantir la survie du process.
 - `setAutomaticReconnect(true)` ; sur `MqttCallbackExtended.connectComplete` : **resubscribe** au topic de commande, **republier** la config discovery et l'état, publier `online`.
-- `ConnectivityManager.NetworkCallback` → `reconnect()` au retour du réseau.
 - LWT sur `media2ha/<device_id>/availability` = `offline` ; `cleanSession=false`, QoS 1.
 
 ## 4. Découverte & topics
