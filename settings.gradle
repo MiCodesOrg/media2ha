@@ -1,2 +1,2 @@
 include ':app'
-rootProject.name = "HA TV Relay"
+rootProject.name = "Media2HA"

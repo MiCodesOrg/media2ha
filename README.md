@@ -1,104 +1,120 @@
-<h1>
-  Android Relay
-  <img src="Images/app-icon-rounded-1.png" width="80" align="right" />
-</h1>
+<h1>Media2HA</h1>
 
-**A high-performance, lightweight media relay for Android TV and Mobile**
+**Relais média Android ↔ Home Assistant via MQTT** — Android 6+ (`minSdk 23`).
 
-Relay is designed to provide seamless media playback state reporting to Home Assistant via MQTT, optimized for maximum efficiency and a minimal system footprint.
+Media2HA observe la session média active d'un appareil Android / Android TV et l'expose dans Home Assistant comme un `media_player` complet : état, métadonnées, pochette et volume. Il reçoit aussi les commandes de Home Assistant (play, pause, next, previous, volume).
 
-<p align="center">
-  <img src="Images/20260324093020.png" width="700" alt="Android Relay Screenshot" />
-</p>
- 
-## Features & Performance
+- **Simple / léger / performant** : Paho MQTT nu, pas de dépendance lourde, pas de polling.
+- Une seule entité = **la session active** (celle qui joue, sinon la plus récemment mise à jour).
+- Découverte automatique MQTT ; aucun YAML côté Home Assistant.
 
-- **Instantaneous State Synchronization**: Real-time reporting of transitions and metadata changes with sub-100ms latency via event-driven callbacks.
-- **Ultra-Lightweight Footprint**: Minimal 3.5 MB installation size and ~35 MB (PSS) memory usage.
-- **Resource Efficiency**: ~4% CPU utilization during active relay, scaling to 0% when idle.
-- **Intelligent Payload Caching**: Reduces redundant MQTT traffic by over 40% while preserving battery life.
-- **Comprehensive Metadata**: Reports playback state (playing, paused, buffering), media title, artist, app package, and duration.
+## Comment ça marche
+
+L'app est un `NotificationListenerService` (accès aux notifications requis) qui suit les `MediaSession` du système. Elle publie un état retenu sur des topics dédiés, et s'abonne aux topics de commande.
+
+L'entité Home Assistant est fournie par l'intégration HACS [`bkbilly/mqtt_media_player`](https://github.com/bkbilly/mqtt_media_player) : Home Assistant ne dispose pas nativement d'un `media_player` MQTT.
+
+## Prérequis
+
+- Android 6.0+ (`minSdk 23`)
+- Un broker MQTT accessible depuis l'appareil
+- Home Assistant avec l'intégration **MQTT**
+- L'intégration custom **`bkbilly/mqtt_media_player`** (via [HACS](https://hacs.xyz/))
 
 ## Installation
 
-### Option 1: Direct Install (Recommended)
+1. Construire ou récupérer `media2ha.apk`.
+2. Installer l'APK sur l'appareil (ADB ou gestionnaire de fichiers).
+3. **Accorder l'accès aux notifications** (obligatoire) :
+   - Réglages système → Accès aux notifications → Media2HA, ou
+   - en ADB :
+     ```bash
+     adb shell cmd notification allow_listener fr.micodes.media2ha/.MediaSessionListenerService
+     ```
+4. Ouvrir l'app, saisir l'IP/le port du broker (et les identifiants si nécessaire), puis **Enregistrer**.
+5. Dans Home Assistant, installer `bkbilly/mqtt_media_player` via HACS puis redémarrer. L'entité `media_player.<device_id>` apparaît automatiquement.
 
-1. Download the latest `android-relay.apk` from the [Releases](https://github.com/saihgupr/android_relay/releases) page.
-2. Install the APK on your device (e.g., using ADB or a local file manager).
-
-### Option 2: Build and Install via ADB
-
-#### Prerequisites
-
-- Android SDK 34
-- Gradle 8.5+
-- Java 21
-
-#### Deployment
-
-1. Connect to your device:
-   ```bash
-   adb connect <DEVICE_IP>:5555
-   ```
-2. Install the APK:
-   ```bash
-   adb install android-relay.apk
-   ```
-
-### Permission Granting
-
-If manual permission granting is difficult (e.g., on certain Android TV interfaces), use the following command to allow notification access:
-
-```bash
-adb shell cmd notification allow_listener com.saihgupr.androidrelay/.MediaSessionListenerService
-```
+> Sur émulateur, le broker de la machine hôte est joignable via `10.0.2.2` ; en WSL, `adb reverse tcp:1883 tcp:1883` puis hôte `127.0.0.1` est plus fiable.
 
 ## Configuration
 
-### In-App Setup
+Champs exposés (et rien d'autre) :
 
-Launch the **Android Relay** application on your device to complete the following steps:
+| Champ | Défaut | Notes |
+|---|---|---|
+| Hôte broker | *(vide)* | IP ou nom d'hôte ; saisie explicite, aucune découverte réseau |
+| Port | `1883` | |
+| Identifiants | désactivé | utilisateur / mot de passe |
+| Nom d'appareil | `Build.MODEL` | nom affiché dans Home Assistant |
+| `device_id` | slug du nom + suffixe stable | identifiant MQTT, prérempli et modifiable (`[a-z0-9_]`) |
 
-1. **Grant Permissions**: Enable the notification listener service.
-2. **MQTT Integration**: Configure the MQTT Broker IP address and Topic.
-3. **Verification**: Use the "Test Connection" tool to validate the setup.
+Actions : **Tester la connexion** (publie la découverte + `online`) et **Dépublier de Home Assistant** (payload vide + `offline`).
 
-### Service Persistence
+## Topics MQTT
 
-The application utilizes a `NotificationListenerService`, which is managed by the Android system. Once enabled, the system automatically re-binds to the service upon device startup. No additional "Start at Boot" utilities are required.
+Namespace runtime : `media2ha/<device_id>`.
 
-## Home Assistant Integration
+| Rôle | Topic | Retained |
+|---|---|---|
+| Découverte | `homeassistant/media_player/<device_id>/config` | oui |
+| Disponibilité | `media2ha/<device_id>/availability` (`online`/`offline`) | oui |
+| État | `.../state` | oui |
+| Titre / Artiste / Album | `.../title`, `.../artist`, `.../album` | oui |
+| Type média | `.../mediatype` (`music`/`video`) | oui |
+| Durée | `.../duration` (secondes) | oui |
+| Position | `.../position` (secondes) | non |
+| Volume | `.../volume` (`0.0`–`1.0`) | oui |
+| Pochette | `.../albumart` (base64 JPEG, 512 px max) | non |
+| Commandes | `.../cmd/<action>` | — |
 
-Integrate the relay into Home Assistant by adding the following sensor configurations to your `configuration.yaml`:
+États publiés : `playing`, `paused`, `stopped`, `idle` (jamais `off`). Sans session active : `idle` et métadonnées effacées.
 
-```yaml
-mqtt:
-  sensor:
-    - name: "Android TV Media State"
-      state_topic: "android_tv/playback_state"
-      value_template: "{{ value_json.state }}"
-      json_attributes_topic: "android_tv/playback_state"
-      icon: mdi:television-play
+## Commandes
 
-    - name: "Android TV Current App"
-      state_topic: "android_tv/playback_state"
-      value_template: "{{ value_json.app }}"
-      icon: mdi:application
+L'app s'abonne à `media2ha/<device_id>/cmd/+` et applique l'action à la session active, après vérification des capacités de la session.
 
-    - name: "Android TV Current Title"
-      state_topic: "android_tv/playback_state"
-      value_template: "{{ value_json.title }}"
-      icon: mdi:music-note
+| Commande | Action |
+|---|---|
+| `cmd/play` | lecture |
+| `cmd/pause` | pause |
+| `cmd/playpause` | bascule lecture/pause (non émis par le composant actuel) |
+| `cmd/next` | piste suivante |
+| `cmd/previous` | piste précédente |
+| `cmd/volume` | volume `0.0`–`1.0` |
 
-    - name: "Android TV Media Duration"
-      state_topic: "android_tv/playback_state"
-      value_template: "{{ value_json.duration }}"
-      unit_of_measurement: "s"
-      icon: mdi:timer-outline
+Le volume utilise l'échelle propre de la session si elle en expose une (`VOLUME_CONTROL_ABSOLUTE` avec `maxVolume > 0`) ; sinon le volume système `STREAM_MUSIC` sert de repli, et les changements externes (télécommande) sont republiés.
+
+## Performance
+
+Cibles indicatives, non bloquantes :
+
+| Métrique | Cible |
+|---|---|
+| APK (release, minifié) | ≤ 4 Mo (objectif ≤ 3.5 Mo) |
+| PSS repos / lecture | ≤ 40 / ≤ 45 Mo |
+| CPU repos / lecture | ~0 % / ≤ 5 % |
+| État → MQTT | < 200 ms (LAN) |
+| Commande HA → action | < 300 ms (LAN) |
+
+Aucun wakelock, aucun polling ; la position n'est republiée qu'aux transitions, sur seek détecté, et toutes les 30 s en lecture.
+
+## Développement
+
+- JDK 17, Android SDK (`compileSdk 34`, `minSdk 23`, `targetSdk 34`)
+- Gradle via le wrapper (`./gradlew`)
+
+```bash
+./gradlew assembleDebug     # app/build/outputs/apk/debug/media2ha.apk
+./gradlew assembleRelease   # APK non signé : à signer pour distribuer
 ```
 
-## Support and Contributions
+Banc de test local (Mosquitto + Home Assistant + composant custom) : voir [`test-harness/`](test-harness/README.md).
 
-If you encounter any issues or have suggestions for improvements, please [open an issue](https://github.com/saihgupr/android_relay/issues). 
+Le spec d'implémentation complet vit dans [`docs/SPEC.md`](docs/SPEC.md).
 
-If you find it useful, consider giving it a star ⭐ or making a [donation](https://ko-fi.com/saihgupr) to support development.
+## Limites connues
+
+- `mute`, `seek` et `turn_on`/`turn_off` ne sont pas exposés par le composant `mqtt_media_player`.
+- Le nom de l'application source (package) n'est pas exposable par le composant.
+- « Dépublier de Home Assistant » efface la découverte retenue et marque l'entité indisponible, mais ne supprime pas l'entité déjà créée : à retirer dans l'UI Home Assistant.
+- Compatibilité avec l'ancien topic `android_tv/playback_state` : non.
