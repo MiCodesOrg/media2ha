@@ -42,6 +42,7 @@ class MediaSessionListenerService : NotificationListenerService(),
     private val lastPayloads = mutableMapOf<String, String>()
     private var lastArtHash: String? = null
     private var lastState: String? = null
+    private var cachedSessionVolume = -1
     private var lastPositionSec: Long = -1
     private var lastPositionAtElapsed: Long = 0
 
@@ -50,7 +51,10 @@ class MediaSessionListenerService : NotificationListenerService(),
     /** Republish the device volume when it changes (fallback sessions). */
     private val volumeObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) {
-            mainHandler.post { activeController()?.let { publishVolume(it) } }
+            mainHandler.post {
+                publishMute()
+                activeController()?.let { publishVolume(it) }
+            }
         }
     }
 
@@ -255,6 +259,7 @@ class MediaSessionListenerService : NotificationListenerService(),
             publishIfChanged(t.duration, "", true, force)
             publishIfChanged(t.position, "", false, force)
             publishIfChanged(t.albumArt, "", false, force)
+            publishIfChanged(t.source, "", true, force)
             lastArtHash = null
             lastState = null
             lastPositionSec = -1
@@ -283,6 +288,8 @@ class MediaSessionListenerService : NotificationListenerService(),
         publishIfChanged(t.mediatype, mediaType(metadata), true, force)
 
         publishVolume(controller)
+        publishMute()
+        publishSource(controller)
         publishPosition(stateChanged)
         publishArtwork(metadata, force)
 
@@ -310,6 +317,28 @@ class MediaSessionListenerService : NotificationListenerService(),
         val t = topics ?: return
         val rounded = (level * 100).roundToInt() / 100.0
         publishIfChanged(t.volume, rounded.toString(), true, false)
+    }
+
+    private fun publishMute() {
+        val t = topics ?: return
+        val muted = try {
+            audioManager.isStreamMute(AudioManager.STREAM_MUSIC)
+        } catch (e: Exception) {
+            false
+        }
+        publishIfChanged(t.mute, if (muted) "mute" else "unmute", true, false)
+    }
+
+    private fun publishSource(controller: MediaController) {
+        val t = topics ?: return
+        publishIfChanged(t.source, sourceLabel(controller.packageName), true, false)
+    }
+
+    private fun sourceLabel(packageName: String): String = try {
+        val info = packageManager.getApplicationInfo(packageName, 0)
+        packageManager.getApplicationLabel(info).toString()
+    } catch (e: Exception) {
+        packageName
     }
 
     /**
@@ -382,6 +411,14 @@ class MediaSessionListenerService : NotificationListenerService(),
                 controller.transportControls.skipToPrevious()
             }
             t.cmdVolume -> applyVolume(controller, payload)
+            t.cmdMute -> applyMute(controller, payload)
+            t.cmdSeek -> applySeek(controller, actions, payload)
+            t.cmdTurnOn -> if (hasAction(actions, PlaybackState.ACTION_PLAY)) {
+                controller.transportControls.play()
+            }
+            t.cmdTurnOff -> if (hasAction(actions, PlaybackState.ACTION_PAUSE)) {
+                controller.transportControls.pause()
+            }
             else -> Log.d(TAG, "Commande inconnue sur $topic")
         }
     }
@@ -407,6 +444,49 @@ class MediaSessionListenerService : NotificationListenerService(),
         if (max <= 0) return
         val target = (value * max).roundToInt().coerceIn(0, max)
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+    }
+
+    private fun applyMute(controller: MediaController, payload: String) {
+        val mute = when (payload.trim().lowercase()) {
+            "mute", "muted", "on", "true", "1" -> true
+            "unmute", "unmuted", "off", "false", "0" -> false
+            else -> return
+        }
+        val info = controller.playbackInfo
+        if (info != null && info.volumeControl == VolumeProvider.VOLUME_CONTROL_ABSOLUTE && info.maxVolume > 0) {
+            try {
+                controller.adjustVolume(
+                    if (mute) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE,
+                    0
+                )
+            } catch (e: Exception) {
+                if (mute) {
+                    cachedSessionVolume = info.currentVolume
+                    controller.setVolumeTo(0, 0)
+                } else {
+                    val restore = if (cachedSessionVolume > 0) cachedSessionVolume else info.maxVolume / 3
+                    controller.setVolumeTo(restore, 0)
+                }
+            }
+        } else {
+            try {
+                audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    if (mute) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE,
+                    0
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "mute: ${e.message}")
+            }
+        }
+        publishMute()
+    }
+
+    private fun applySeek(controller: MediaController, actions: Long, payload: String) {
+        val seconds = payload.trim().toLongOrNull() ?: return
+        if (hasAction(actions, PlaybackState.ACTION_SEEK_TO)) {
+            controller.transportControls.seekTo(seconds * 1000)
+        }
     }
 
     companion object {

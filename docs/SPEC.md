@@ -13,7 +13,7 @@ Fork de [`saihgupr/android_relay`](https://github.com/saihgupr/android_relay), a
 - **recevoir** les commandes HA sur MQTT (play, pause, next, previous, volume) ;
 - rester **simple, léger et performant**.
 
-Home Assistant ne supporte **pas nativement** de `media_player` MQTT. L'entité est fournie par l'intégration custom HACS [`bkbilly/mqtt_media_player`](https://github.com/bkbilly/mqtt_media_player). Référence : [issue #2](https://github.com/MiCodesOrg/media2ha/issues/2).
+Home Assistant ne supporte **pas nativement** de `media_player` MQTT. L'entité est fournie par [`MiCodesOrg/mqtt_media_player`](https://github.com/MiCodesOrg/mqtt_media_player), un fork de `bkbilly/mqtt_media_player` augmenté (mute, seek, power, source). Référence : [issue #2](https://github.com/MiCodesOrg/media2ha/issues/2).
 
 ## 2. Identité & plateforme
 
@@ -56,6 +56,8 @@ Référence : [issue #8](https://github.com/MiCodesOrg/media2ha/issues/8).
 | Position | `.../position` | non |
 | Volume | `.../volume` (0.0–1.0) | oui |
 | Album art | `.../albumart` (base64 JPEG) | non |
+| Muet | `.../mute` (`mute`/`unmute`) | oui |
+| Source (app) | `.../source` | oui |
 | Commandes | `.../cmd/{play,pause,playpause,next,previous}` | — |
 | Volume (cmd) | `.../cmd/volume` (float 0.0–1.0) | — |
 
@@ -89,6 +91,16 @@ Référence : [issue #8](https://github.com/MiCodesOrg/media2ha/issues/8).
   "command_next_payload": "next",
   "command_previous_topic": "media2ha/<device_id>/cmd/previous",
   "command_previous_payload": "previous",
+  "command_mute_topic": "media2ha/<device_id>/cmd/mute",
+  "command_mute_on_payload": "mute",
+  "command_mute_off_payload": "unmute",
+  "command_seek_topic": "media2ha/<device_id>/cmd/seek",
+  "command_turn_on_topic": "media2ha/<device_id>/cmd/turn_on",
+  "command_turn_on_payload": "on",
+  "command_turn_off_topic": "media2ha/<device_id>/cmd/turn_off",
+  "command_turn_off_payload": "off",
+  "state_mute_topic": "media2ha/<device_id>/mute",
+  "state_source_topic": "media2ha/<device_id>/source",
   "device": {
     "identifiers": ["<device_id>"],
     "name": "<nom affiché>",
@@ -115,7 +127,7 @@ Référence : [issue #7](https://github.com/MiCodesOrg/media2ha/issues/7). Une s
 | `STATE_NONE` / `STATE_ERROR` | `idle` |
 
 - **Jamais `off`** ; sans session active → `idle` + métadonnées effacées. `unavailable` vient du LWT.
-- Champs : `title`, `artist`, `album`, `duration` (int s), `position` (int s), `mediatype` (`music`/`video`), `volume` (0.0–1.0). L'app/source n'est pas exposable par le composant.
+- Champs : `title`, `artist`, `album`, `duration` (int s), `position` (int s), `mediatype` (`music`/`video`), `volume` (0.0–1.0), `mute` (`mute`/`unmute`), `source` (nom de l'app).
 - Position : publiée aux changements (play/pause/seek/piste) + resync toutes les 30 s en lecture ; non retained.
 - Valeurs absentes → payload vide (`duration == 0`/inconnue → vide).
 
@@ -131,6 +143,10 @@ Référence : [issue #10](https://github.com/MiCodesOrg/media2ha/issues/10). L'a
 | `next` | `skipToNext()` | `ACTION_SKIP_TO_NEXT` |
 | `previous` | `skipToPrevious()` | `ACTION_SKIP_TO_PREVIOUS` |
 | `volume` | session absolue si `maxVolume > 0`, sinon `AudioManager` `STREAM_MUSIC` | — |
+| `mute` | `ADJUST_MUTE`/`ADJUST_UNMUTE` (session absolue) ou `STREAM_MUSIC` (repli) | — |
+| `seek` | `seekTo(secondes × 1000)` | `ACTION_SEEK_TO` |
+| `turn_on` | lecture | `ACTION_PLAY` |
+| `turn_off` | pause | `ACTION_PAUSE` |
 
 - Chaque action vérifie `PlaybackState.getActions()` ; échec silencieux + log, sans modifier l'état publié.
 - `volume` : payload borné `[0.0, 1.0]`. Si la session expose une échelle absolue (`VOLUME_CONTROL_ABSOLUTE` avec `maxVolume > 0`) → `setVolumeTo` ; sinon (cas fréquent des apps vidéo locales : `ABSOLUTE` avec `maxVolume = 0`) → repli sur le volume système `STREAM_MUSIC` via `AudioManager`.
@@ -179,10 +195,11 @@ Référence : [issue #5](https://github.com/MiCodesOrg/media2ha/issues/5). Voir 
 - `play_media` (lancer un média depuis HA).
 - Browse mDNS best-effort du broker (fog).
 
-## 12. Différé
+## 12. Implémenté côté composant (fork)
 
-- [Support mute / seek / turn_on-off](https://github.com/MiCodesOrg/media2ha/issues/14) — absent du composant ; à traiter après le reste, éventuellement par contribution upstream ou fork.
-- App/source dans HA (même ticket).
+- `mute`, `seek`, `turn_on`/`turn_off`, `play_pause` et `source` sont exposés par le composant forké [`MiCodesOrg/mqtt_media_player`](https://github.com/MiCodesOrg/mqtt_media_player) ; l'app publie la découverte correspondante (topics `cmd/mute`, `cmd/seek`, `cmd/turn_on`, `cmd/turn_off`, états `mute`, `source`).
+- Ticket [#14](https://github.com/MiCodesOrg/media2ha/issues/14) résolu.
+- Le fork peut être proposé en amont via une PR.
 
 ## 13. Définition de « fini »
 

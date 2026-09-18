@@ -1,6 +1,6 @@
 # Banc de test Media2HA
 
-Broker **Mosquitto** + **Home Assistant** + le composant [`bkbilly/mqtt_media_player`](https://github.com/bkbilly/mqtt_media_player), pour valider discovery et commandes de bout en bout.
+Broker **Mosquitto** + **Home Assistant** + le composant [`MiCodesOrg/mqtt_media_player`](https://github.com/MiCodesOrg/mqtt_media_player) (fork de `bkbilly/mqtt_media_player`), pour valider discovery et commandes de bout en bout.
 
 ## Prérequis
 
@@ -12,7 +12,7 @@ Broker **Mosquitto** + **Home Assistant** + le composant [`bkbilly/mqtt_media_pl
 1. Installer le composant custom (attention : le dépôt imbrique `custom_components`) :
 
    ```bash
-   git clone --depth 1 https://github.com/bkbilly/mqtt_media_player.git /tmp/mqtt_media_player
+   git clone --depth 1 https://github.com/MiCodesOrg/mqtt_media_player.git /tmp/mqtt_media_player
    mkdir -p test-harness/homeassistant/custom_components
    cp -r /tmp/mqtt_media_player/custom_components/mqtt_media_player \
      test-harness/homeassistant/custom_components/

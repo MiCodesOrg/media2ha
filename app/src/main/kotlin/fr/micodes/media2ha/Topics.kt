@@ -14,6 +14,8 @@ class Topics(deviceId: String) {
     val position = "$base/position"
     val volume = "$base/volume"
     val albumArt = "$base/albumart"
+    val mute = "$base/mute"
+    val source = "$base/source"
 
     val cmd = "$base/cmd"
     val cmdPlay = "$cmd/play"
@@ -22,6 +24,10 @@ class Topics(deviceId: String) {
     val cmdNext = "$cmd/next"
     val cmdPrevious = "$cmd/previous"
     val cmdVolume = "$cmd/volume"
+    val cmdMute = "$cmd/mute"
+    val cmdSeek = "$cmd/seek"
+    val cmdTurnOn = "$cmd/turn_on"
+    val cmdTurnOff = "$cmd/turn_off"
 
     val cmdWildcard = "$cmd/+"
 
