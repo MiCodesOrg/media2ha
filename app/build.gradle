@@ -1,11 +1,10 @@
 plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
+    alias(libs.plugins.android.application)
 }
 
 android {
     namespace 'fr.micodes.media2ha'
-    compileSdk 34
+    compileSdk 36
 
     def envCode = System.getenv("VERSION_CODE")
     def envName = System.getenv("VERSION_NAME")
@@ -14,7 +13,7 @@ android {
     defaultConfig {
         applicationId "fr.micodes.media2ha"
         minSdk 23
-        targetSdk 34
+        targetSdk 36
         // Version injected by the release pipeline; sensible defaults locally.
         versionCode(envCode ? envCode.toInteger() : 1)
         versionName(envName ?: "1.0")
@@ -48,22 +47,13 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-    kotlinOptions {
-        jvmTarget = '1.8'
-    }
-
-    applicationVariants.all { variant ->
-        variant.outputs.all {
-            outputFileName = "media2ha.apk"
-        }
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 }
 
 dependencies {
-    implementation 'androidx.core:core-ktx:1.9.0'
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.appcompat
+    implementation libs.paho.mqttv3
 }

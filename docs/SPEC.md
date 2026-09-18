@@ -21,7 +21,7 @@ Home Assistant ne supporte **pas nativement** de `media_player` MQTT. L'entité 
 |---|---|
 | applicationId / namespace | `fr.micodes.media2ha` |
 | Nom affiché | `Media2HA` |
-| `minSdk` / `targetSdk` | `23` / `34` |
+| `minSdk` / `targetSdk` | `23` / `36` |
 | UI | `appcompat` existant ; **pas de Material3/Compose** |
 
 Package Kotlin sous `fr.micodes.media2ha`. Le rebrand remplace l'applicationId d'origine (rupture nette, pas de mise à jour par-dessus l'APK d'origine).

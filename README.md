@@ -23,7 +23,7 @@ L'entité Home Assistant est fournie par [`MiCodesOrg/mqtt_media_player`](https:
 
 ## Installation
 
-1. Construire ou récupérer `media2ha.apk`.
+1. Construire ou récupérer l'APK (`app-release.apk`).
 2. Installer l'APK sur l'appareil (ADB ou gestionnaire de fichiers).
 3. **Accorder l'accès aux notifications** (obligatoire) :
    - Réglages système → Accès aux notifications → Media2HA, ou
@@ -107,11 +107,11 @@ Aucun wakelock, aucun polling ; la position n'est republiée qu'aux transitions,
 
 ## Développement
 
-- JDK 17, Android SDK (`compileSdk 34`, `minSdk 23`, `targetSdk 34`)
+- JDK 17, Android SDK (`compileSdk 36`, `minSdk 23`, `targetSdk 36`)
 - Gradle via le wrapper (`./gradlew`)
 
 ```bash
-./gradlew assembleDebug     # app/build/outputs/apk/debug/media2ha.apk
+./gradlew assembleDebug     # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew assembleRelease   # APK non signé : à signer pour distribuer
 ```
 

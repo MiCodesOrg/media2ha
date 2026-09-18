@@ -190,7 +190,7 @@ class MediaSessionListenerService : NotificationListenerService(),
                         publishCurrentState()
                     }
 
-                    override fun onAudioInfoChanged(info: MediaController.PlaybackInfo?) {
+                    override fun onAudioInfoChanged(info: MediaController.PlaybackInfo) {
                         publishVolume(controller)
                     }
                 }

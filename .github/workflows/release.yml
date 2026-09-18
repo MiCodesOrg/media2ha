@@ -14,5 +14,5 @@ jobs:
     with:
       package_name: fr.micodes.media2ha
       gradle_command: ./gradlew :app:bundleRelease :app:assembleRelease
-      apk_path: app/build/outputs/apk/release/media2ha.apk
+      apk_path: app/build/outputs/apk/release/app-release.apk
     secrets: inherit
