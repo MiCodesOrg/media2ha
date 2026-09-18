@@ -1,0 +1,8 @@
+name: Test smoke
+on:
+  workflow_dispatch:
+jobs:
+  call:
+    uses: MiCodesOrg/.github/.github/workflows/smoke.yml@main
+    with:
+      package_name: fr.micodes.media2ha
