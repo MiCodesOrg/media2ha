@@ -16,6 +16,10 @@ _Avoid_: state object, DTO
 The translation of a session snapshot into the payloads Home Assistant consumes.
 _Avoid_: state sync, relay payload
 
+**Command**:
+An action Home Assistant asks the app to perform on the active session.
+_Avoid_: action, request
+
 **Discovery**:
 The retained Home Assistant configuration that creates the media_player entity.
 _Avoid_: registration, announcement

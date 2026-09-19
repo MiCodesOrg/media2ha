@@ -16,7 +16,6 @@ import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.util.Log
 import java.util.concurrent.Executors
-import kotlin.math.roundToInt
 
 /**
  * Adapter: observes the Android media sessions and the MQTT connection, feeds plain
@@ -31,6 +30,7 @@ class MediaSessionListenerService : NotificationListenerService(),
     private var mqtt: MqttClientManager? = null
     private var topics: Topics? = null
     private var report: SessionReport? = null
+    private var commandRouter: CommandRouter? = null
     private var activeSignature: String? = null
 
     private val controllers = mutableMapOf<String, MediaController>()
@@ -145,6 +145,7 @@ class MediaSessionListenerService : NotificationListenerService(),
         val t = Topics(config.deviceId, config.discoveryPrefix)
         topics = t
         report = SessionReport(t)
+        commandRouter = CommandRouter(t)
         lastPayloads.clear()
         mqtt = MqttClientManager(
             serverUri = config.serverUri(),
@@ -352,83 +353,76 @@ class MediaSessionListenerService : NotificationListenerService(),
 
     // ---------------------------------------------------------------- commands
 
-    private fun hasAction(actions: Long, action: Long): Boolean = (actions and action) != 0L
-
     private fun handleCommand(topic: String, payload: String) {
-        val t = topics ?: return
         Log.d(TAG, "Commande reçue: $topic = $payload")
         val controller = activeController()
         if (controller == null) {
             Log.d(TAG, "Commande ignorée: aucune session active")
             return
         }
-        val actions = controller.playbackState?.actions ?: 0L
-
-        when (topic) {
-            t.cmdPlay -> if (hasAction(actions, PlaybackState.ACTION_PLAY)) controller.transportControls.play()
-            t.cmdPause -> if (hasAction(actions, PlaybackState.ACTION_PAUSE)) controller.transportControls.pause()
-            t.cmdPlayPause -> togglePlayPause(controller, actions)
-            t.cmdNext -> if (hasAction(actions, PlaybackState.ACTION_SKIP_TO_NEXT)) {
-                controller.transportControls.skipToNext()
-            }
-            t.cmdPrevious -> if (hasAction(actions, PlaybackState.ACTION_SKIP_TO_PREVIOUS)) {
-                controller.transportControls.skipToPrevious()
-            }
-            t.cmdVolume -> applyVolume(controller, payload)
-            t.cmdMute -> applyMute(controller, payload)
-            t.cmdSeek -> applySeek(controller, actions, payload)
-            t.cmdTurnOn -> if (hasAction(actions, PlaybackState.ACTION_PLAY)) {
-                controller.transportControls.play()
-            }
-            t.cmdTurnOff -> if (hasAction(actions, PlaybackState.ACTION_PAUSE)) {
-                controller.transportControls.pause()
-            }
-            else -> Log.d(TAG, "Commande inconnue sur $topic")
-        }
+        val router = commandRouter ?: return
+        execute(router.route(topic, payload, buildCapabilities(controller)), controller)
     }
 
-    private fun togglePlayPause(controller: MediaController, actions: Long) {
-        val playing = controller.playbackState?.state == PlaybackState.STATE_PLAYING
-        if (playing) {
-            if (hasAction(actions, PlaybackState.ACTION_PAUSE)) controller.transportControls.pause()
-        } else {
-            if (hasAction(actions, PlaybackState.ACTION_PLAY)) controller.transportControls.play()
+    private fun buildCapabilities(controller: MediaController): CommandCapabilities {
+        val playbackState = controller.playbackState
+        val actions = playbackState?.actions ?: 0L
+        val transports = buildSet {
+            if (has(actions, PlaybackState.ACTION_PLAY)) add(TransportCapability.PLAY)
+            if (has(actions, PlaybackState.ACTION_PAUSE)) add(TransportCapability.PAUSE)
+            if (has(actions, PlaybackState.ACTION_SKIP_TO_NEXT)) add(TransportCapability.SKIP_TO_NEXT)
+            if (has(actions, PlaybackState.ACTION_SKIP_TO_PREVIOUS)) add(TransportCapability.SKIP_TO_PREVIOUS)
+            if (has(actions, PlaybackState.ACTION_SEEK_TO)) add(TransportCapability.SEEK_TO)
         }
+        return CommandCapabilities(
+            transports = transports,
+            playing = playbackState?.state == PlaybackState.STATE_PLAYING,
+            volume = volumeControl(controller),
+        )
     }
 
-    private fun applyVolume(controller: MediaController, payload: String) {
-        val value = payload.trim().toFloatOrNull()?.coerceIn(0f, 1f) ?: return
+    private fun volumeControl(controller: MediaController): VolumeControl {
         val info = controller.playbackInfo
         if (info != null && info.volumeControl == VolumeProvider.VOLUME_CONTROL_ABSOLUTE && info.maxVolume > 0) {
-            val target = (value * info.maxVolume).roundToInt().coerceIn(0, info.maxVolume)
-            controller.setVolumeTo(target, 0)
-            return
+            return VolumeControl.SessionAbsolute(info.maxVolume)
         }
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        if (max <= 0) return
-        val target = (value * max).roundToInt().coerceIn(0, max)
-        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+        return if (max > 0) VolumeControl.Device(max) else VolumeControl.Unavailable
     }
 
-    private fun applyMute(controller: MediaController, payload: String) {
-        val mute = when (payload.trim().lowercase()) {
-            "mute", "muted", "on", "true", "1" -> true
-            "unmute", "unmuted", "off", "false", "0" -> false
-            else -> return
+    private fun execute(decision: CommandDecision, controller: MediaController) {
+        when (decision) {
+            CommandDecision.Play -> controller.transportControls.play()
+            CommandDecision.Pause -> controller.transportControls.pause()
+            CommandDecision.Next -> controller.transportControls.skipToNext()
+            CommandDecision.Previous -> controller.transportControls.skipToPrevious()
+            is CommandDecision.SeekTo -> controller.transportControls.seekTo(decision.seconds * 1000)
+            is CommandDecision.SetVolume ->
+                if (decision.useSession) {
+                    controller.setVolumeTo(decision.index, 0)
+                } else {
+                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, decision.index, 0)
+                }
+            is CommandDecision.SetMute -> applyMute(decision, controller)
+            CommandDecision.Ignore -> Log.d(TAG, "Commande ignorée (capacité absente ou payload invalide)")
         }
-        val info = controller.playbackInfo
-        if (info != null && info.volumeControl == VolumeProvider.VOLUME_CONTROL_ABSOLUTE && info.maxVolume > 0) {
+    }
+
+    private fun applyMute(decision: CommandDecision.SetMute, controller: MediaController) {
+        if (decision.useSession) {
+            val info = controller.playbackInfo
             try {
                 controller.adjustVolume(
-                    if (mute) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE,
+                    if (decision.mute) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE,
                     0
                 )
             } catch (e: Exception) {
-                if (mute) {
+                val max = info?.maxVolume ?: return
+                if (decision.mute) {
                     cachedSessionVolume = info.currentVolume
                     controller.setVolumeTo(0, 0)
                 } else {
-                    val restore = if (cachedSessionVolume > 0) cachedSessionVolume else info.maxVolume / 3
+                    val restore = if (cachedSessionVolume > 0) cachedSessionVolume else max / 3
                     controller.setVolumeTo(restore, 0)
                 }
             }
@@ -436,7 +430,7 @@ class MediaSessionListenerService : NotificationListenerService(),
             try {
                 audioManager.adjustStreamVolume(
                     AudioManager.STREAM_MUSIC,
-                    if (mute) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE,
+                    if (decision.mute) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE,
                     0
                 )
             } catch (e: Exception) {
@@ -446,12 +440,7 @@ class MediaSessionListenerService : NotificationListenerService(),
         publishCurrentState()
     }
 
-    private fun applySeek(controller: MediaController, actions: Long, payload: String) {
-        val seconds = payload.trim().toLongOrNull() ?: return
-        if (hasAction(actions, PlaybackState.ACTION_SEEK_TO)) {
-            controller.transportControls.seekTo(seconds * 1000)
-        }
-    }
+    private fun has(actions: Long, action: Long): Boolean = (actions and action) != 0L
 
     companion object {
         private const val TAG = "Media2HA"
