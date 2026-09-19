@@ -16,16 +16,11 @@ import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.util.Log
 import java.util.concurrent.Executors
-import kotlin.math.abs
-import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * Owns the media-session observation and the MQTT connection.
- *
- * It is a NotificationListenerService, so the system binds it and rebinds it after boot.
- * State changes are pushed to MQTT; commands arriving on `.../cmd/+` are applied to the
- * active media session.
+ * Adapter: observes the Android media sessions and the MQTT connection, feeds plain
+ * snapshots to [SessionReport], and executes the resulting publishes and command decisions.
  */
 class MediaSessionListenerService : NotificationListenerService(),
     MediaSessionManager.OnActiveSessionsChangedListener {
@@ -35,28 +30,15 @@ class MediaSessionListenerService : NotificationListenerService(),
 
     private var mqtt: MqttClientManager? = null
     private var topics: Topics? = null
+    private var report: SessionReport? = null
     private var activeSignature: String? = null
 
     private val controllers = mutableMapOf<String, MediaController>()
     private val callbacks = mutableMapOf<String, MediaController.Callback>()
     private val lastPayloads = mutableMapOf<String, String>()
-    private var lastArtHash: String? = null
-    private var lastState: String? = null
+    private var lastArtMetadata: MediaMetadata? = null
+    private var lastArtHashValue: String? = null
     private var cachedSessionVolume = -1
-    private var lastPositionSec: Long = -1
-    private var lastPositionAtElapsed: Long = 0
-
-    private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
-
-    /** Republish the device volume when it changes (fallback sessions). */
-    private val volumeObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
-        override fun onChange(selfChange: Boolean) {
-            mainHandler.post {
-                publishMute()
-                activeController()?.let { publishVolume(it) }
-            }
-        }
-    }
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val artworkExecutor = Executors.newSingleThreadExecutor { r ->
@@ -64,10 +46,19 @@ class MediaSessionListenerService : NotificationListenerService(),
     }
     private var positionLoopRunning = false
 
+    private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
+
+    /** Republish state when the device volume changes (fallback sessions). */
+    private val volumeObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            mainHandler.post { publishCurrentState() }
+        }
+    }
+
     private val positionLoop = object : Runnable {
         override fun run() {
-            publishPosition(force = true)
-            mainHandler.postDelayed(this, POSITION_RESYNC_MS)
+            publishCurrentState()
+            mainHandler.postDelayed(this, SessionReport.POSITION_RESYNC_MS)
         }
     }
 
@@ -78,6 +69,7 @@ class MediaSessionListenerService : NotificationListenerService(),
             mqtt?.publish(t.availability, Topics.PAYLOAD_ONLINE, true)
             mqtt?.publish(t.discovery, DiscoveryPayload.build(config, t), true)
             mqtt?.subscribe(t.cmdWildcard, 1)
+            report?.reset()
             mainHandler.post { publishCurrentState(force = true) }
         }
 
@@ -152,8 +144,8 @@ class MediaSessionListenerService : NotificationListenerService(),
         mqtt?.disconnect()
         val t = Topics(config.deviceId, config.discoveryPrefix)
         topics = t
+        report = SessionReport(t)
         lastPayloads.clear()
-        lastArtHash = null
         mqtt = MqttClientManager(
             serverUri = config.serverUri(),
             clientId = MqttClientManager.stableClientId(config.deviceId),
@@ -191,7 +183,7 @@ class MediaSessionListenerService : NotificationListenerService(),
                     }
 
                     override fun onAudioInfoChanged(info: MediaController.PlaybackInfo) {
-                        publishVolume(controller)
+                        publishCurrentState()
                     }
                 }
                 runCatching { controller.registerCallback(cb) }
@@ -211,31 +203,102 @@ class MediaSessionListenerService : NotificationListenerService(),
             ?: list.maxByOrNull { it.playbackState?.lastPositionUpdateTime ?: 0L }
     }
 
-    private fun mapState(state: Int?): String = when (state) {
-        PlaybackState.STATE_PLAYING -> "playing"
-        PlaybackState.STATE_PAUSED -> "paused"
-        PlaybackState.STATE_BUFFERING, PlaybackState.STATE_CONNECTING -> "playing"
-        PlaybackState.STATE_STOPPED -> "stopped"
-        PlaybackState.STATE_FAST_FORWARDING,
-        PlaybackState.STATE_REWINDING,
-        PlaybackState.STATE_SKIPPING_TO_NEXT,
-        PlaybackState.STATE_SKIPPING_TO_PREVIOUS,
-        PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM -> "playing"
-        else -> "idle"
+    // ------------------------------------------------------------- snapshot
+
+    private fun buildSnapshot(controller: MediaController?): SessionSnapshot {
+        if (controller == null) return SessionSnapshot(hasSession = false)
+        val playbackState = controller.playbackState
+        val metadata = controller.metadata
+        return SessionSnapshot(
+            hasSession = true,
+            state = playbackStateValue(playbackState?.state),
+            positionMs = playbackState?.position ?: 0L,
+            playbackSpeed = playbackState?.playbackSpeed ?: 0f,
+            lastPositionUpdateTimeMs = playbackState?.lastPositionUpdateTime ?: 0L,
+            nowElapsedMs = SystemClock.elapsedRealtime(),
+            durationMs = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L,
+            title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty(),
+            artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty(),
+            album = metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM).orEmpty(),
+            mimeType = metadata?.getString(METADATA_KEY_MIME),
+            artworkHash = artworkHash(metadata),
+            volumeLevel = currentVolumeLevel(controller),
+            muted = isStreamMuted(),
+            sourceLabel = sourceLabel(controller.packageName),
+        )
     }
 
-    private fun mediaType(metadata: MediaMetadata?): String {
-        val mime = metadata?.getString(METADATA_KEY_MIME)
-        return if (!mime.isNullOrBlank() && mime.startsWith("video/")) "video" else "music"
+    private fun playbackStateValue(state: Int?): PlaybackStateValue = when (state) {
+        PlaybackState.STATE_NONE -> PlaybackStateValue.NONE
+        PlaybackState.STATE_STOPPED -> PlaybackStateValue.STOPPED
+        PlaybackState.STATE_PAUSED -> PlaybackStateValue.PAUSED
+        PlaybackState.STATE_PLAYING -> PlaybackStateValue.PLAYING
+        PlaybackState.STATE_FAST_FORWARDING -> PlaybackStateValue.FAST_FORWARDING
+        PlaybackState.STATE_REWINDING -> PlaybackStateValue.REWINDING
+        PlaybackState.STATE_BUFFERING -> PlaybackStateValue.BUFFERING
+        PlaybackState.STATE_ERROR -> PlaybackStateValue.ERROR
+        PlaybackState.STATE_CONNECTING -> PlaybackStateValue.CONNECTING
+        PlaybackState.STATE_SKIPPING_TO_NEXT -> PlaybackStateValue.SKIPPING_TO_NEXT
+        PlaybackState.STATE_SKIPPING_TO_PREVIOUS -> PlaybackStateValue.SKIPPING_TO_PREVIOUS
+        PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM -> PlaybackStateValue.SKIPPING_TO_QUEUE_ITEM
+        else -> PlaybackStateValue.OTHER
     }
 
-    private fun currentPositionMs(state: PlaybackState): Long {
-        var position = state.position
-        if (state.state == PlaybackState.STATE_PLAYING) {
-            val elapsed = SystemClock.elapsedRealtime() - state.lastPositionUpdateTime
-            position += (elapsed * state.playbackSpeed).toLong()
+    /**
+     * Prefer the session's own absolute volume scale. When a session declares
+     * [VolumeProvider.VOLUME_CONTROL_ABSOLUTE] with `maxVolume == 0` (common for local
+     * video apps that defer to the device stream), fall back to the system STREAM_MUSIC
+     * volume so the HA slider still controls something real.
+     */
+    private fun currentVolumeLevel(controller: MediaController): Float? {
+        val info = controller.playbackInfo
+        if (info != null && info.volumeControl == VolumeProvider.VOLUME_CONTROL_ABSOLUTE && info.maxVolume > 0) {
+            return info.currentVolume.toFloat() / info.maxVolume
         }
-        return max(0L, position)
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (max <= 0) return null
+        return audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max
+    }
+
+    private fun isStreamMuted(): Boolean = try {
+        audioManager.isStreamMute(AudioManager.STREAM_MUSIC)
+    } catch (e: Exception) {
+        false
+    }
+
+    private fun sourceLabel(packageName: String): String = try {
+        val info = packageManager.getApplicationInfo(packageName, 0)
+        packageManager.getApplicationLabel(info).toString()
+    } catch (e: Exception) {
+        packageName
+    }
+
+    /** Cheap fingerprint of the artwork, cached per metadata object, so changes are detectable. */
+    private fun artworkHash(metadata: MediaMetadata?): String? {
+        if (metadata == null) return null
+        if (metadata === lastArtMetadata) return lastArtHashValue
+        val bitmap = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+            ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_ART)
+        val hash = if (bitmap == null) {
+            null
+        } else {
+            val sb = StringBuilder().append(bitmap.width).append('x').append(bitmap.height)
+            val stepX = maxOf(1, bitmap.width / 8)
+            val stepY = maxOf(1, bitmap.height / 8)
+            var y = 0
+            while (y < bitmap.height) {
+                var x = 0
+                while (x < bitmap.width) {
+                    sb.append(':').append(bitmap.getPixel(x, y))
+                    x += stepX
+                }
+                y += stepY
+            }
+            Integer.toHexString(sb.toString().hashCode())
+        }
+        lastArtMetadata = metadata
+        lastArtHashValue = hash
+        return hash
     }
 
     // ------------------------------------------------------------- publishing
@@ -248,136 +311,37 @@ class MediaSessionListenerService : NotificationListenerService(),
 
     private fun publishCurrentState(force: Boolean = false) {
         val t = topics ?: return
+        val r = report ?: return
         if (mqtt == null) return
 
         val controller = activeController()
-        if (controller == null) {
-            publishIfChanged(t.state, "idle", true, force)
-            publishIfChanged(t.title, "", true, force)
-            publishIfChanged(t.artist, "", true, force)
-            publishIfChanged(t.album, "", true, force)
-            publishIfChanged(t.duration, "", true, force)
-            publishIfChanged(t.position, "", false, force)
-            publishIfChanged(t.albumArt, "", false, force)
-            publishIfChanged(t.source, "", true, force)
-            lastArtHash = null
-            lastState = null
-            lastPositionSec = -1
-            stopPositionLoop()
-            return
+        val result = r.report(buildSnapshot(controller), force)
+        for (p in result.publishes) {
+            if (p.topic == t.position) {
+                mqtt?.publish(p.topic, p.payload, p.retained)
+            } else {
+                publishIfChanged(p.topic, p.payload, p.retained, force)
+            }
         }
+        if (result.encodeArtwork) publishArtwork(controller?.metadata)
 
-        val playbackState = controller.playbackState
-        val state = mapState(playbackState?.state)
-        val stateChanged = force || state != lastState
-        publishIfChanged(t.state, state, true, force)
-        lastState = state
-
-        val metadata = controller.metadata
-        publishIfChanged(t.title, metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty(), true, force)
-        publishIfChanged(t.artist, metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty(), true, force)
-        publishIfChanged(t.album, metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM).orEmpty(), true, force)
-
-        val durationMs = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
-        publishIfChanged(
-            t.duration,
-            if (durationMs > 0) (durationMs / 1000).toString() else "",
-            true,
-            force
-        )
-        publishIfChanged(t.mediatype, mediaType(metadata), true, force)
-
-        publishVolume(controller)
-        publishMute()
-        publishSource(controller)
-        publishPosition(stateChanged)
-        publishArtwork(metadata, force)
-
+        val state = result.publishes.firstOrNull { it.topic == t.state }?.payload
         if (state == "playing") startPositionLoop() else stopPositionLoop()
     }
 
-    /**
-     * Prefer the session's own absolute volume scale. When a session declares
-     * [VolumeProvider.VOLUME_CONTROL_ABSOLUTE] with `maxVolume == 0` (common for local
-     * video apps that defer to the device stream), fall back to the system STREAM_MUSIC
-     * volume so the HA slider still controls something real.
-     */
-    private fun publishVolume(controller: MediaController) {
-        val info = controller.playbackInfo
-        if (info != null && info.volumeControl == VolumeProvider.VOLUME_CONTROL_ABSOLUTE && info.maxVolume > 0) {
-            publishVolumeLevel(info.currentVolume.toFloat() / info.maxVolume)
-            return
-        }
-        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        if (max <= 0) return
-        publishVolumeLevel(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max)
-    }
-
-    private fun publishVolumeLevel(level: Float) {
-        val t = topics ?: return
-        val rounded = (level * 100).roundToInt() / 100.0
-        publishIfChanged(t.volume, rounded.toString(), true, false)
-    }
-
-    private fun publishMute() {
-        val t = topics ?: return
-        val muted = try {
-            audioManager.isStreamMute(AudioManager.STREAM_MUSIC)
-        } catch (e: Exception) {
-            false
-        }
-        publishIfChanged(t.mute, if (muted) "mute" else "unmute", true, false)
-    }
-
-    private fun publishSource(controller: MediaController) {
-        val t = topics ?: return
-        publishIfChanged(t.source, sourceLabel(controller.packageName), true, false)
-    }
-
-    private fun sourceLabel(packageName: String): String = try {
-        val info = packageManager.getApplicationInfo(packageName, 0)
-        packageManager.getApplicationLabel(info).toString()
-    } catch (e: Exception) {
-        packageName
-    }
-
-    /**
-     * Position is published on real transitions (play/pause/track), on a detected seek
-     * (a jump from the extrapolated position), and by the 30 s resync loop. Steady
-     * playback callbacks do not republish it, so the broker is not spammed.
-     */
-    private fun publishPosition(force: Boolean) {
-        val t = topics ?: return
-        val controller = activeController() ?: return
-        val state = controller.playbackState ?: return
-        val seconds = currentPositionMs(state) / 1000
-        val now = SystemClock.elapsedRealtime()
-        if (!force && lastPositionSec >= 0) {
-            val expected = lastPositionSec + (now - lastPositionAtElapsed) / 1000
-            if (abs(seconds - expected) <= SEEK_THRESHOLD_SECONDS) return
-        }
-        lastPositionSec = seconds
-        lastPositionAtElapsed = now
-        mqtt?.publish(t.position, seconds.toString(), false)
-    }
-
-    private fun publishArtwork(metadata: MediaMetadata?, force: Boolean) {
+    private fun publishArtwork(metadata: MediaMetadata?) {
         val t = topics ?: return
         val bitmap = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
             ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
         artworkExecutor.execute {
-            val base64 = AlbumArt.encodeToBase64(bitmap)
-            val hash = AlbumArt.hash(base64)
-            if (!force && hash == lastArtHash) return@execute
-            lastArtHash = hash
-            mqtt?.publish(t.albumArt, base64 ?: "", false)
+            mqtt?.publish(t.albumArt, AlbumArt.encodeToBase64(bitmap) ?: "", false)
         }
     }
 
     private fun startPositionLoop() {
         if (positionLoopRunning) return
         positionLoopRunning = true
-        mainHandler.postDelayed(positionLoop, POSITION_RESYNC_MS)
+        mainHandler.postDelayed(positionLoop, SessionReport.POSITION_RESYNC_MS)
     }
 
     private fun stopPositionLoop() {
@@ -479,7 +443,7 @@ class MediaSessionListenerService : NotificationListenerService(),
                 Log.w(TAG, "mute: ${e.message}")
             }
         }
-        publishMute()
+        publishCurrentState()
     }
 
     private fun applySeek(controller: MediaController, actions: Long, payload: String) {
@@ -491,8 +455,6 @@ class MediaSessionListenerService : NotificationListenerService(),
 
     companion object {
         private const val TAG = "Media2HA"
-        private const val POSITION_RESYNC_MS = 30_000L
-        private const val SEEK_THRESHOLD_SECONDS = 3L
         private const val METADATA_KEY_MIME = "android.media.metadata.MIME"
     }
 }
