@@ -3,6 +3,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Hybrid app: runs on phones and on Android TV (no touchscreen, leanback optional). -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+
     <!-- Resolve the label of the app owning the active media session (Android 11+ visibility). -->
     <queries>
         <intent>
