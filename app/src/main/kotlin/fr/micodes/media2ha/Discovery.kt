@@ -1,27 +1,38 @@
 package fr.micodes.media2ha
 
-import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Builds the retained discovery payload for the bkbilly `mqtt_media_player` component. */
-object DiscoveryPayload {
+/**
+ * The Home Assistant discovery seam: owns the naming scheme ([topics]) and builds the
+ * retained discovery payload. Android-free, so the payload contract is unit-testable.
+ */
+class Discovery(
+    val deviceId: String,
+    val deviceName: String,
+    discoveryPrefix: String,
+    val manufacturer: String = "micodes",
+    val model: String = "Android",
+    val swVersion: String = "1.0",
+) {
 
-    fun build(config: Media2HaConfig, topics: Topics): String {
+    val topics = Topics(deviceId, discoveryPrefix)
+
+    fun payload(): String {
         val availability = JSONObject()
             .put("topic", topics.availability)
             .put("payload_available", Topics.PAYLOAD_ONLINE)
             .put("payload_not_available", Topics.PAYLOAD_OFFLINE)
 
         val device = JSONObject()
-            .put("identifiers", JSONArray().put(config.deviceId))
-            .put("name", config.deviceName)
-            .put("manufacturer", "micodes")
-            .put("model", Build.MODEL ?: "Android")
-            .put("sw_version", BuildConfig.VERSION_NAME)
+            .put("identifiers", JSONArray().put(deviceId))
+            .put("name", deviceName)
+            .put("manufacturer", manufacturer)
+            .put("model", model)
+            .put("sw_version", swVersion)
 
         return JSONObject()
-            .put("name", config.deviceName)
+            .put("name", deviceName)
             .put("availability", availability)
             .put("state_state_topic", topics.state)
             .put("state_title_topic", topics.title)

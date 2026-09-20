@@ -57,4 +57,5 @@ dependencies {
     implementation libs.androidx.appcompat
     implementation libs.paho.mqttv3
     testImplementation libs.junit
+    testImplementation libs.json
 }

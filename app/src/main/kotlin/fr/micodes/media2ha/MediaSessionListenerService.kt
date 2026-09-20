@@ -19,7 +19,8 @@ import java.util.concurrent.Executors
 
 /**
  * Adapter: observes the Android media sessions and the MQTT connection, feeds plain
- * snapshots to [SessionReport], and executes the resulting publishes and command decisions.
+ * snapshots to [SessionReport], routes commands through [CommandRouter], and executes the
+ * resulting publishes and decisions through [HomeAssistantSession].
  */
 class MediaSessionListenerService : NotificationListenerService(),
     MediaSessionManager.OnActiveSessionsChangedListener {
@@ -27,8 +28,7 @@ class MediaSessionListenerService : NotificationListenerService(),
     private lateinit var mediaSessionManager: MediaSessionManager
     private lateinit var config: Media2HaConfig
 
-    private var mqtt: MqttClientManager? = null
-    private var topics: Topics? = null
+    private var session: HomeAssistantSession? = null
     private var report: SessionReport? = null
     private var commandRouter: CommandRouter? = null
     private var activeSignature: String? = null
@@ -64,11 +64,10 @@ class MediaSessionListenerService : NotificationListenerService(),
 
     private val mqttListener = object : MqttClientManager.Listener {
         override fun onConnected(reconnect: Boolean) {
-            val t = topics ?: return
+            val session = session ?: return
             config.setStatus("Connecté au broker", false)
-            mqtt?.publish(t.availability, Topics.PAYLOAD_ONLINE, true)
-            mqtt?.publish(t.discovery, DiscoveryPayload.build(config, t), true)
-            mqtt?.subscribe(t.cmdWildcard, 1)
+            session.announce()
+            session.subscribe(session.topics.cmdWildcard, 1)
             report?.reset()
             mainHandler.post { publishCurrentState(force = true) }
         }
@@ -119,7 +118,7 @@ class MediaSessionListenerService : NotificationListenerService(),
         stopPositionLoop()
         runCatching { mediaSessionManager.removeOnActiveSessionsChangedListener(this) }
         runCatching { contentResolver.unregisterContentObserver(volumeObserver) }
-        mqtt?.disconnect()
+        session?.disconnect()
         artworkExecutor.shutdownNow()
     }
 
@@ -134,27 +133,20 @@ class MediaSessionListenerService : NotificationListenerService(),
             return
         }
         val signature = configSignature()
-        if (mqtt == null || signature != activeSignature) {
+        if (session == null || signature != activeSignature) {
             activeSignature = signature
             startMqtt()
         }
     }
 
     private fun startMqtt() {
-        mqtt?.disconnect()
-        val t = Topics(config.deviceId, config.discoveryPrefix)
-        topics = t
-        report = SessionReport(t)
-        commandRouter = CommandRouter(t)
+        session?.disconnect()
         lastPayloads.clear()
-        mqtt = MqttClientManager(
-            serverUri = config.serverUri(),
-            clientId = MqttClientManager.stableClientId(config.deviceId),
-            username = if (config.useAuth) config.username else null,
-            password = if (config.useAuth) config.password.toCharArray() else null,
-            willTopic = t.availability,
-            listener = mqttListener
-        ).also { it.connect() }
+        val newSession = HomeAssistantSession.forService(config, mqttListener)
+        session = newSession
+        report = SessionReport(newSession.topics)
+        commandRouter = CommandRouter(newSession.topics)
+        newSession.connect()
     }
 
     // ---------------------------------------------------------- media sessions
@@ -304,38 +296,44 @@ class MediaSessionListenerService : NotificationListenerService(),
 
     // ------------------------------------------------------------- publishing
 
-    private fun publishIfChanged(topic: String, payload: String, retained: Boolean, force: Boolean) {
+    private fun publishIfChanged(
+        session: HomeAssistantSession,
+        topic: String,
+        payload: String,
+        retained: Boolean,
+        force: Boolean,
+    ) {
         if (!force && lastPayloads[topic] == payload) return
         lastPayloads[topic] = payload
-        mqtt?.publish(topic, payload, retained)
+        session.publish(topic, payload, retained)
     }
 
     private fun publishCurrentState(force: Boolean = false) {
-        val t = topics ?: return
-        val r = report ?: return
-        if (mqtt == null) return
+        val session = session ?: return
+        val report = report ?: return
+        val topics = session.topics
 
         val controller = activeController()
-        val result = r.report(buildSnapshot(controller), force)
-        for (p in result.publishes) {
-            if (p.topic == t.position) {
-                mqtt?.publish(p.topic, p.payload, p.retained)
+        val result = report.report(buildSnapshot(controller), force)
+        for (publish in result.publishes) {
+            if (publish.topic == topics.position) {
+                session.publish(publish.topic, publish.payload, publish.retained)
             } else {
-                publishIfChanged(p.topic, p.payload, p.retained, force)
+                publishIfChanged(session, publish.topic, publish.payload, publish.retained, force)
             }
         }
         if (result.encodeArtwork) publishArtwork(controller?.metadata)
 
-        val state = result.publishes.firstOrNull { it.topic == t.state }?.payload
+        val state = result.publishes.firstOrNull { it.topic == topics.state }?.payload
         if (state == "playing") startPositionLoop() else stopPositionLoop()
     }
 
     private fun publishArtwork(metadata: MediaMetadata?) {
-        val t = topics ?: return
+        val session = session ?: return
         val bitmap = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
             ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
         artworkExecutor.execute {
-            mqtt?.publish(t.albumArt, AlbumArt.encodeToBase64(bitmap) ?: "", false)
+            session.publish(session.topics.albumArt, AlbumArt.encodeToBase64(bitmap) ?: "", false)
         }
     }
 

@@ -37,7 +37,7 @@ class MainActivity : AppCompatActivity() {
     private var deviceIdTouched = false
     private var updatingDeviceId = false
     private var testing = false
-    private var testManager: MqttClientManager? = null
+    private var testSession: HomeAssistantSession? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,8 +69,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        testManager?.disconnect()
-        testManager = null
+        testSession?.disconnect()
+        testSession = null
         super.onDestroy()
     }
 
@@ -147,51 +147,42 @@ class MainActivity : AppCompatActivity() {
         if (testing) return
         if (!persistConfig()) return
         testing = true
-        val topics = Topics(config.deviceId, config.discoveryPrefix)
         testResultText.text = getString(R.string.testing)
         testResultText.setTextColor(getColor(R.color.text_secondary))
 
-        testManager = MqttClientManager(
-            serverUri = config.serverUri(),
-            clientId = MqttClientManager.transientClientId(config.deviceId),
-            username = if (config.useAuth) config.username else null,
-            password = if (config.useAuth) config.password.toCharArray() else null,
-            willTopic = topics.availability,
-            listener = object : MqttClientManager.Listener {
-                override fun onConnected(reconnect: Boolean) {
-                    testManager?.publish(topics.availability, Topics.PAYLOAD_ONLINE, true)
-                    testManager?.publish(topics.discovery, DiscoveryPayload.build(config, topics), true)
-                    runOnUiThread {
-                        testResultText.text = getString(R.string.test_ok)
-                        testResultText.setTextColor(getColor(R.color.status_ok))
-                        testing = false
-                    }
-                    testManager?.disconnect()
-                    testManager = null
+        testSession = HomeAssistantSession.transient(config, object : MqttClientManager.Listener {
+            override fun onConnected(reconnect: Boolean) {
+                testSession?.announce()
+                runOnUiThread {
+                    testResultText.text = getString(R.string.test_ok)
+                    testResultText.setTextColor(getColor(R.color.status_ok))
+                    testing = false
                 }
+                testSession?.disconnect()
+                testSession = null
+            }
 
-                override fun onConnectionLost(cause: Throwable?) {
+            override fun onConnectionLost(cause: Throwable?) {
+                runOnUiThread {
+                    testResultText.text = getString(R.string.test_failed, cause?.message ?: "")
+                    testResultText.setTextColor(getColor(R.color.status_error))
+                    testing = false
+                }
+            }
+
+            override fun onMessage(topic: String, payload: String) {}
+
+            override fun onLog(message: String, isError: Boolean) {
+                if (isError) {
                     runOnUiThread {
-                        testResultText.text = getString(R.string.test_failed, cause?.message ?: "")
+                        testResultText.text = message
                         testResultText.setTextColor(getColor(R.color.status_error))
                         testing = false
                     }
                 }
-
-                override fun onMessage(topic: String, payload: String) {}
-
-                override fun onLog(message: String, isError: Boolean) {
-                    if (isError) {
-                        runOnUiThread {
-                            testResultText.text = message
-                            testResultText.setTextColor(getColor(R.color.status_error))
-                            testing = false
-                        }
-                    }
-                }
             }
-        )
-        testManager?.connect()
+        })
+        testSession?.connect()
     }
 
     private fun removeFromHomeAssistant() {
@@ -199,30 +190,20 @@ class MainActivity : AppCompatActivity() {
             toast(getString(R.string.host_required))
             return
         }
-        val topics = Topics(config.deviceId, config.discoveryPrefix)
-        val manager = MqttClientManager(
-            serverUri = config.serverUri(),
-            clientId = MqttClientManager.transientClientId(config.deviceId),
-            username = if (config.useAuth) config.username else null,
-            password = if (config.useAuth) config.password.toCharArray() else null,
-            willTopic = topics.availability,
-            listener = object : MqttClientManager.Listener {
-                override fun onConnected(reconnect: Boolean) {
-                    testManager?.publish(topics.discovery, "", true)
-                    testManager?.publish(topics.availability, Topics.PAYLOAD_OFFLINE, true)
-                    runOnUiThread { toast(getString(R.string.removed)) }
-                    testManager?.disconnect()
-                    testManager = null
-                }
-
-                override fun onConnectionLost(cause: Throwable?) {}
-                override fun onMessage(topic: String, payload: String) {}
-                override fun onLog(message: String, isError: Boolean) {}
+        testSession?.disconnect()
+        testSession = HomeAssistantSession.transient(config, object : MqttClientManager.Listener {
+            override fun onConnected(reconnect: Boolean) {
+                testSession?.withdraw()
+                runOnUiThread { toast(getString(R.string.removed)) }
+                testSession?.disconnect()
+                testSession = null
             }
-        )
-        testManager?.disconnect()
-        testManager = manager
-        manager.connect()
+
+            override fun onConnectionLost(cause: Throwable?) {}
+            override fun onMessage(topic: String, payload: String) {}
+            override fun onLog(message: String, isError: Boolean) {}
+        })
+        testSession?.connect()
     }
 
     private fun updateStatus() {
