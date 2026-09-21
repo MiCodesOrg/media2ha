@@ -32,7 +32,13 @@ L'entité Home Assistant est fournie par [`MiCodesOrg/mqtt_media_player`](https:
      adb shell cmd notification allow_listener fr.micodes.media2ha/.MediaSessionListenerService
      ```
 4. Ouvrir l'app, saisir l'IP/le port du broker (et les identifiants si nécessaire), puis **Enregistrer**.
-5. Dans Home Assistant, ajouter `MiCodesOrg/mqtt_media_player` comme dépôt HACS puis redémarrer. L'entité `media_player.<device_id>` apparaît automatiquement.
+5. Dans Home Assistant, ajouter `MiCodesOrg/mqtt_media_player` comme dépôt HACS, **activer l'intégration** dans `configuration.yaml` puis redémarrer :
+
+   ```yaml
+   mqtt_media_player:
+   ```
+
+   C'est une intégration **discovery-only** : sans cette ligne, rien n'est découvert. L'entité `media_player.<device_id>` apparaît ensuite automatiquement, sans l'ajouter à la main.
 
 > Sur émulateur, le broker de la machine hôte est joignable via `10.0.2.2` ; en WSL, `adb reverse tcp:1883 tcp:1883` puis hôte `127.0.0.1` est plus fiable.
 
