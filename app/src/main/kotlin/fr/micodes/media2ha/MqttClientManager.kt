@@ -160,6 +160,9 @@ class MqttClientManager(
 
     fun disconnect() {
         closed = true
+        if (executor.isShutdown) return
+        // Graceful: queued publishes run before the disconnect task, instead of being
+        // cancelled by shutdownNow() while in flight (which throws MqttException).
         executor.execute {
             try {
                 client?.takeIf { it.isConnected }?.disconnect()
@@ -171,7 +174,7 @@ class MqttClientManager(
                 isConnected = false
             }
         }
-        executor.shutdownNow()
+        executor.shutdown()
     }
 
     companion object {
