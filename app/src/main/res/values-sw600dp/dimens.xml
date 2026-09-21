@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android TV / large screens: roomier margins for overscan and bigger targets. -->
+    <dimen name="screen_margin_horizontal">48dp</dimen>
+    <dimen name="screen_margin_vertical">36dp</dimen>
+    <dimen name="field_height">56dp</dimen>
+    <dimen name="button_height">56dp</dimen>
+    <dimen name="section_spacing">32dp</dimen>
+</resources>

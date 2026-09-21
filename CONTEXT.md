@@ -8,6 +8,10 @@ An Android app that relays the device's active media session to Home Assistant o
 The media session currently playing, or the most recently updated one when nothing is playing.
 _Avoid_: current player, foreground app
 
+**Broker**:
+The MQTT server the app connects to.
+_Avoid_: server, host, gateway
+
 **Session snapshot**:
 A point-in-time description of the active session, independent of how it was observed.
 _Avoid_: state object, DTO

@@ -8,7 +8,11 @@
     <color name="text_secondary">#8E8E93</color>
     <color name="text_hint">#48484A</color>
     <color name="status_ok">#30D158</color>
+    <color name="status_warning">#FF9F0A</color>
     <color name="status_error">#FF453A</color>
+    <color name="status_ok_bg">#2630D158</color>
+    <color name="status_warning_bg">#26FF9F0A</color>
+    <color name="status_error_bg">#26FF453A</color>
     <color name="accent_blue_focused">#5AA9FF</color>
     <color name="accent_blue_dim">#2A7ED6</color>
     <color name="divider">#2C2C2E</color>

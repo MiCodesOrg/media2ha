@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Safe margins and control sizes; overridden for large screens (TV) in values-sw600dp. -->
+    <dimen name="screen_margin_horizontal">24dp</dimen>
+    <dimen name="screen_margin_vertical">24dp</dimen>
+    <dimen name="field_height">52dp</dimen>
+    <dimen name="button_height">52dp</dimen>
+    <dimen name="section_spacing">24dp</dimen>
+</resources>
