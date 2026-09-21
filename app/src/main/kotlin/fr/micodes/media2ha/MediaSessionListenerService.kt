@@ -136,6 +136,9 @@ class MediaSessionListenerService : NotificationListenerService(),
         if (session == null || signature != activeSignature) {
             activeSignature = signature
             startMqtt()
+        } else {
+            // A previous initial connect may have failed (e.g. network not up at boot).
+            session?.reconnectIfNeeded()
         }
     }
 

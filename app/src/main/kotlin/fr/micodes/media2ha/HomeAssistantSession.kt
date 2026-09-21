@@ -15,6 +15,7 @@ class HomeAssistantSession private constructor(
     val topics get() = discovery.topics
 
     fun connect() = mqtt.connect()
+    fun reconnectIfNeeded() = mqtt.reconnectIfNeeded()
     fun publish(topic: String, payload: String, retained: Boolean) = mqtt.publish(topic, payload, retained)
     fun subscribe(topic: String, qos: Int = 1) = mqtt.subscribe(topic, qos)
     fun disconnect() = mqtt.disconnect()
