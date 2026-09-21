@@ -47,6 +47,26 @@ class HomeAssistantSession private constructor(
             Publish(discovery.topics.availability, Topics.PAYLOAD_OFFLINE, true),
         )
 
+        /** Clears every retained topic of a device id left behind by a rename. */
+        fun retirePublishes(deviceId: String, discoveryPrefix: String): List<Publish> {
+            val topics = Topics(deviceId, discoveryPrefix)
+            return listOf(
+                topics.discovery,
+                topics.availability,
+                topics.state,
+                topics.title,
+                topics.artist,
+                topics.album,
+                topics.mediatype,
+                topics.duration,
+                topics.position,
+                topics.volume,
+                topics.albumArt,
+                topics.mute,
+                topics.source,
+            ).map { Publish(it, "", true) }
+        }
+
         private fun build(
             config: Media2HaConfig,
             clientId: String,

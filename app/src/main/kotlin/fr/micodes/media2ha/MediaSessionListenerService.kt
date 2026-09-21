@@ -66,6 +66,7 @@ class MediaSessionListenerService : NotificationListenerService(),
         override fun onConnected(reconnect: Boolean) {
             val session = session ?: return
             config.setStatus("Connecté au broker", false)
+            retireRetiredDevice(session)
             session.announce()
             session.subscribe(session.topics.cmdWildcard, 1)
             report?.reset()
@@ -95,6 +96,10 @@ class MediaSessionListenerService : NotificationListenerService(),
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_RELOAD) {
+            // Force a fresh session so a renamed device republishes under its new id.
+            activeSignature = null
+        }
         ensureMqtt()
         return START_STICKY
     }
@@ -150,6 +155,17 @@ class MediaSessionListenerService : NotificationListenerService(),
         report = SessionReport(newSession.topics)
         commandRouter = CommandRouter(newSession.topics)
         newSession.connect()
+    }
+
+    /** Clears the retained topics of a device id left behind by a rename. */
+    private fun retireRetiredDevice(session: HomeAssistantSession) {
+        val retired = config.retiredDeviceId
+        if (retired.isBlank() || retired == config.deviceId) return
+        HomeAssistantSession.retirePublishes(retired, config.discoveryPrefix).forEach {
+            session.publish(it.topic, it.payload, it.retained)
+        }
+        config.retiredDeviceId = ""
+        Log.i(TAG, "Ancien identifiant nettoyé: $retired")
     }
 
     // ---------------------------------------------------------- media sessions
@@ -446,5 +462,6 @@ class MediaSessionListenerService : NotificationListenerService(),
     companion object {
         private const val TAG = "Media2HA"
         private const val METADATA_KEY_MIME = "android.media.metadata.MIME"
+        const val ACTION_RELOAD = "fr.micodes.media2ha.action.RELOAD"
     }
 }

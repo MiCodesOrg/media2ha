@@ -116,6 +116,8 @@ class MainActivity : AppCompatActivity() {
 
         deviceNameEdit.doAfterTextChanged { text ->
             if (loading || deviceIdTouched) return@doAfterTextChanged
+            // Keep an existing id stable: renaming must not create a new entity.
+            if (deviceIdEdit.text.toString().isNotBlank()) return@doAfterTextChanged
             updatingDeviceId = true
             deviceIdEdit.setText(Media2HaConfig.defaultDeviceId(this, text?.toString().orEmpty()))
             updatingDeviceId = false
@@ -132,9 +134,6 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.save_config_button).setOnClickListener {
             if (persistConfig()) {
                 editing = false
-                NotificationListenerService.requestRebind(
-                    ComponentName(this, MediaSessionListenerService::class.java)
-                )
                 testResultText.text = ""
                 toast(getString(R.string.saved))
                 updateStatus()
@@ -184,10 +183,30 @@ class MainActivity : AppCompatActivity() {
         config.password = passwordEdit.text.toString()
         val name = deviceNameEdit.text.toString().trim()
         config.deviceName = name
+        val previousId = config.deviceId
         val id = deviceIdEdit.text.toString().trim()
         config.deviceId = if (id.isBlank()) Media2HaConfig.defaultDeviceId(this, name) else id
+        if (previousId.isNotBlank() && previousId != config.deviceId) {
+            config.retiredDeviceId = previousId
+        }
         config.discoveryPrefix = prefixEdit.text.toString()
+        reloadService()
         return true
+    }
+
+    /**
+     * Tells the background service to re-read the config and republish with the current
+     * identity. Relying on a listener rebind alone is not enough: when only the device id
+     * changed, the running service kept publishing to the previous topics.
+     */
+    private fun reloadService() {
+        startService(
+            Intent(this, MediaSessionListenerService::class.java)
+                .setAction(MediaSessionListenerService.ACTION_RELOAD)
+        )
+        NotificationListenerService.requestRebind(
+            ComponentName(this, MediaSessionListenerService::class.java)
+        )
     }
 
     private fun updateStatus() {

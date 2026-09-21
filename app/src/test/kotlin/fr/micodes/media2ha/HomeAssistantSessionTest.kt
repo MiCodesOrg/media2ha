@@ -33,4 +33,31 @@ class HomeAssistantSessionTest {
         assertEquals("offline", publishes[1].payload)
         assertTrue(publishes.all { it.retained })
     }
+
+    @Test
+    fun `retire empties every retained topic of the previous id`() {
+        val publishes = HomeAssistantSession.retirePublishes("old_id", "hass")
+        val topics = Topics("old_id", "hass")
+
+        assertTrue(publishes.all { it.payload.isEmpty() && it.retained })
+        assertEquals(
+            listOf(
+                topics.discovery,
+                topics.availability,
+                topics.state,
+                topics.title,
+                topics.artist,
+                topics.album,
+                topics.mediatype,
+                topics.duration,
+                topics.position,
+                topics.volume,
+                topics.albumArt,
+                topics.mute,
+                topics.source,
+            ),
+            publishes.map { it.topic },
+        )
+        assertTrue(publishes.none { it.topic.contains("new_id") })
+    }
 }

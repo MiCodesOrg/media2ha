@@ -55,6 +55,14 @@ class Media2HaConfig(private val context: Context) {
         }
         set(value) = prefs.edit().putString(KEY_DEVICE_ID, slugify(value)).apply()
 
+    /** Id left behind by a rename, whose retained topics are cleared on the next connect. */
+    var retiredDeviceId: String
+        get() = prefs.getString(KEY_RETIRED_DEVICE_ID, "") ?: ""
+        set(value) {
+            // commit(), not apply(): the cleanup must survive a background process kill.
+            prefs.edit().putString(KEY_RETIRED_DEVICE_ID, value.trim()).commit()
+        }
+
     val isConfigured: Boolean
         get() = host.isNotBlank()
 
@@ -81,6 +89,7 @@ class Media2HaConfig(private val context: Context) {
         private const val KEY_DISCOVERY_PREFIX = "discovery_prefix"
         private const val KEY_DEVICE_NAME = "device_name"
         private const val KEY_DEVICE_ID = "device_id"
+        private const val KEY_RETIRED_DEVICE_ID = "retired_device_id"
         private const val KEY_LAST_STATUS = "last_status"
         private const val KEY_LAST_STATUS_ERROR = "last_status_error"
 
