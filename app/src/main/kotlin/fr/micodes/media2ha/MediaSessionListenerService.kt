@@ -114,10 +114,14 @@ class MediaSessionListenerService : NotificationListenerService(),
         super.onListenerConnected()
         ensureMqtt()
         val componentName = ComponentName(this, MediaSessionListenerService::class.java)
-        runCatching {
-            mediaSessionManager.addOnActiveSessionsChangedListener(this, componentName)
-            updateSessions(mediaSessionManager.getActiveSessions(componentName))
-        }.onFailure { Log.w(TAG, "getActiveSessions: ${it.message}") }
+        // Android 6 delivers this callback on a binder thread with no Looper, and the media
+        // session manager builds a Handler, so registration must happen on the main thread.
+        mainHandler.post {
+            runCatching {
+                mediaSessionManager.addOnActiveSessionsChangedListener(this, componentName)
+                updateSessions(mediaSessionManager.getActiveSessions(componentName))
+            }.onFailure { Log.w(TAG, "getActiveSessions: ${it.message}") }
+        }
     }
 
     override fun onActiveSessionsChanged(activeControllers: List<MediaController>?) {

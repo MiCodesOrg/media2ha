@@ -3,6 +3,7 @@ package fr.micodes.media2ha
 import android.content.ComponentName
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
@@ -206,9 +207,12 @@ class MainActivity : AppCompatActivity() {
             Intent(this, MediaSessionListenerService::class.java)
                 .setAction(MediaSessionListenerService.ACTION_RELOAD)
         )
-        NotificationListenerService.requestRebind(
-            ComponentName(this, MediaSessionListenerService::class.java)
-        )
+        // requestRebind() only exists from API 24; below that the explicit reload above is enough.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            NotificationListenerService.requestRebind(
+                ComponentName(this, MediaSessionListenerService::class.java)
+            )
+        }
     }
 
     private fun updateStatus() {
