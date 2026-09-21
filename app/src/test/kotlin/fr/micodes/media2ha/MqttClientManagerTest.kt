@@ -1,6 +1,8 @@
 package fr.micodes.media2ha
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MqttClientManagerTest {
@@ -18,5 +20,12 @@ class MqttClientManagerTest {
     @Test
     fun `retry backoff tolerates a negative attempt`() {
         assertEquals(5, MqttClientManager.retryDelaySeconds(-3))
+    }
+
+    @Test
+    fun `work is accepted only while the session is open`() {
+        assertTrue(MqttClientManager.acceptsWork(closed = false, executorShutdown = false))
+        assertFalse(MqttClientManager.acceptsWork(closed = true, executorShutdown = false))
+        assertFalse(MqttClientManager.acceptsWork(closed = false, executorShutdown = true))
     }
 }

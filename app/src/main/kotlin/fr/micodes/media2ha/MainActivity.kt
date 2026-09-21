@@ -117,9 +117,12 @@ class MainActivity : AppCompatActivity() {
         deviceNameEdit.doAfterTextChanged { text ->
             if (loading || deviceIdTouched) return@doAfterTextChanged
             // Keep an existing id stable: renaming must not create a new entity.
-            if (deviceIdEdit.text.toString().isNotBlank()) return@doAfterTextChanged
+            val current = deviceIdEdit.text.toString()
+            val suggested = Media2HaConfig.defaultDeviceId(this, text?.toString().orEmpty())
+            val resolved = ConfigRules.deviceIdForName(current, suggested)
+            if (resolved == current) return@doAfterTextChanged
             updatingDeviceId = true
-            deviceIdEdit.setText(Media2HaConfig.defaultDeviceId(this, text?.toString().orEmpty()))
+            deviceIdEdit.setText(resolved)
             updatingDeviceId = false
         }
 
@@ -185,10 +188,9 @@ class MainActivity : AppCompatActivity() {
         config.deviceName = name
         val previousId = config.deviceId
         val id = deviceIdEdit.text.toString().trim()
-        config.deviceId = if (id.isBlank()) Media2HaConfig.defaultDeviceId(this, name) else id
-        if (previousId.isNotBlank() && previousId != config.deviceId) {
-            config.retiredDeviceId = previousId
-        }
+        val suggested = Media2HaConfig.defaultDeviceId(this, name)
+        config.deviceId = ConfigRules.deviceIdForName(id, suggested)
+        ConfigRules.retiredDeviceId(previousId, config.deviceId)?.let { config.retiredDeviceId = it }
         config.discoveryPrefix = prefixEdit.text.toString()
         reloadService()
         return true

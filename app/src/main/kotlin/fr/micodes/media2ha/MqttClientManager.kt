@@ -9,6 +9,7 @@ import org.eclipse.paho.client.mqttv3.MqttException
 import org.eclipse.paho.client.mqttv3.MqttMessage
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
@@ -56,13 +57,27 @@ class MqttClientManager(
     fun connect() {
         retryAttempt = 0
         retryScheduled = false
-        executor.execute { doConnect() }
+        submit { doConnect() }
     }
 
     /** Retry right now if a previous attempt failed and nothing is scheduled. */
     fun reconnectIfNeeded() {
         if (closed || isConnected || connecting || retryScheduled) return
-        executor.execute { if (!closed && !isConnected) doConnect() }
+        submit { if (!closed && !isConnected) doConnect() }
+    }
+
+    /**
+     * Runs work on the MQTT thread, unless the session is already closed. Publishing after a
+     * disconnect must be a no-op, not a crash: callers (e.g. a slow artwork download) can
+     * outlive the session they started on.
+     */
+    private fun submit(task: Runnable) {
+        if (!acceptsWork(closed, executor.isShutdown)) return
+        try {
+            executor.execute(task)
+        } catch (e: RejectedExecutionException) {
+            Log.w(TAG, "Tâche MQTT ignorée: client arrêté")
+        }
     }
 
     private fun doConnect() {
@@ -132,9 +147,9 @@ class MqttClientManager(
     }
 
     fun publish(topic: String, payload: String, retained: Boolean) {
-        executor.execute {
-            val c = client ?: return@execute
-            if (!c.isConnected) return@execute
+        submit {
+            val c = client ?: return@submit
+            if (!c.isConnected) return@submit
             try {
                 val message = MqttMessage(payload.toByteArray()).apply {
                     qos = 1
@@ -148,8 +163,8 @@ class MqttClientManager(
     }
 
     fun subscribe(topic: String, qos: Int = 1) {
-        executor.execute {
-            val c = client ?: return@execute
+        submit {
+            val c = client ?: return@submit
             try {
                 if (c.isConnected) c.subscribe(topic, qos)
             } catch (e: Exception) {
@@ -163,16 +178,20 @@ class MqttClientManager(
         if (executor.isShutdown) return
         // Graceful: queued publishes run before the disconnect task, instead of being
         // cancelled by shutdownNow() while in flight (which throws MqttException).
-        executor.execute {
-            try {
-                client?.takeIf { it.isConnected }?.disconnect()
-                client?.close()
-            } catch (e: Exception) {
-                Log.w(TAG, "disconnect: ${e.message}")
-            } finally {
-                client = null
-                isConnected = false
+        try {
+            executor.execute {
+                try {
+                    client?.takeIf { it.isConnected }?.disconnect()
+                    client?.close()
+                } catch (e: Exception) {
+                    Log.w(TAG, "disconnect: ${e.message}")
+                } finally {
+                    client = null
+                    isConnected = false
+                }
             }
+        } catch (e: RejectedExecutionException) {
+            Log.w(TAG, "disconnect ignoré: client déjà arrêté")
         }
         executor.shutdown()
     }
@@ -192,5 +211,8 @@ class MqttClientManager(
         /** Capped exponential backoff for a failed initial connect: 5, 10, 20, 40, 60, 60… */
         fun retryDelaySeconds(attempt: Int): Int =
             minOf(5 shl minOf(attempt.coerceAtLeast(0), 5), 60)
+
+        /** Work submitted after the session is closed is ignored, never rejected. */
+        fun acceptsWork(closed: Boolean, executorShutdown: Boolean): Boolean = !closed && !executorShutdown
     }
 }

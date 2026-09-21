@@ -16,6 +16,10 @@ data class SessionSnapshot(
     val artist: String = "",
     val album: String = "",
     val mimeType: String? = null,
+    val hasVideoSize: Boolean = false,
+    val sessionTag: String? = null,
+    val packageName: String = "",
+    val artworkUri: String? = null,
     val artworkHash: String? = null,
     val volumeLevel: Float? = null,
     val muted: Boolean = false,
@@ -71,7 +75,7 @@ class SessionReport(private val topics: Topics) {
             if (snapshot.durationMs > 0) (snapshot.durationMs / 1000).toString() else "",
             true,
         )
-        publishes += Publish(topics.mediatype, mediaType(snapshot.mimeType), true)
+        publishes += Publish(topics.mediatype, mediaType(snapshot), true)
         publishes += Publish(topics.mute, if (snapshot.muted) "mute" else "unmute", true)
         publishes += Publish(topics.source, snapshot.sourceLabel, true)
         snapshot.volumeLevel?.let { publishes += Publish(topics.volume, formatLevel(it), true) }
@@ -124,8 +128,19 @@ class SessionReport(private val topics: Topics) {
         else -> "idle"
     }
 
-    private fun mediaType(mimeType: String?): String =
-        if (!mimeType.isNullOrBlank() && mimeType.startsWith("video/")) "video" else "music"
+    /**
+     * Video vs music is rarely explicit: many video apps (Plex, for one) publish no MIME
+     * type at all, and may even reuse the ARTIST/ALBUM keys. So we take the first signal
+     * that says "video", and fall back to music.
+     */
+    private fun mediaType(snapshot: SessionSnapshot): String {
+        val mime = snapshot.mimeType
+        if (!mime.isNullOrBlank() && mime.startsWith("video/")) return "video"
+        if (snapshot.hasVideoSize) return "video"
+        if (snapshot.sessionTag?.contains("video", ignoreCase = true) == true) return "video"
+        if (snapshot.packageName in VIDEO_PACKAGES) return "video"
+        return "music"
+    }
 
     private fun currentPositionMs(snapshot: SessionSnapshot): Long {
         var position = snapshot.positionMs
@@ -157,5 +172,23 @@ class SessionReport(private val topics: Topics) {
     companion object {
         const val POSITION_RESYNC_MS = 30_000L
         const val SEEK_THRESHOLD_SECONDS = 3L
+
+        /** Apps known to play video, for sessions that expose no MIME type or tag. */
+        private val VIDEO_PACKAGES = setOf(
+            "com.plexapp.android",
+            "com.google.android.youtube.tv",
+            "com.google.android.youtube",
+            "com.netflix.ninja",
+            "com.amazon.amazonvideo.livingroom",
+            "com.amazon.avod.thirdpartyclient",
+            "com.disney.disneyplus",
+            "com.apple.atve.androidtv.appletv",
+            "com.molotov.app",
+            "com.canal.android.canal",
+            "com.arte.tv",
+            "org.xbmc.kodi",
+            "org.videolan.vlc",
+            "com.mxtech.videoplayer.ad",
+        )
     }
 }

@@ -3,18 +3,24 @@ package fr.micodes.media2ha
 import android.content.ComponentName
 import android.content.Intent
 import android.database.ContentObserver
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.VolumeProvider
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.util.Log
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
@@ -221,6 +227,8 @@ class MediaSessionListenerService : NotificationListenerService(),
         if (controller == null) return SessionSnapshot(hasSession = false)
         val playbackState = controller.playbackState
         val metadata = controller.metadata
+        val bitmap = artworkBitmap(metadata)
+        val uri = artworkUri(metadata)
         return SessionSnapshot(
             hasSession = true,
             state = playbackStateValue(playbackState?.state),
@@ -233,12 +241,33 @@ class MediaSessionListenerService : NotificationListenerService(),
             artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty(),
             album = metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM).orEmpty(),
             mimeType = metadata?.getString(METADATA_KEY_MIME),
-            artworkHash = artworkHash(metadata),
+            hasVideoSize = metadata != null &&
+                (
+                    metadata.containsKey(METADATA_KEY_VIDEO_WIDTH) ||
+                        metadata.containsKey(METADATA_KEY_VIDEO_HEIGHT)
+                    ),
+            sessionTag = controller.tag,
+            packageName = controller.packageName,
+            artworkHash = if (bitmap != null) artworkHash(metadata) else uri,
+            artworkUri = if (bitmap == null) uri else null,
             volumeLevel = currentVolumeLevel(controller),
             muted = isStreamMuted(),
             sourceLabel = sourceLabel(controller.packageName),
         )
     }
+
+    /** Artwork is often offered only as a URI (Plex does this), never as a bitmap. */
+    private fun artworkUri(metadata: MediaMetadata?): String? {
+        if (metadata == null) return null
+        return Artwork.pickUri(
+            metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI),
+            metadata.getString(MediaMetadata.METADATA_KEY_ART_URI),
+            metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI),
+        )
+    }
+
+    private fun artworkBitmap(metadata: MediaMetadata?): Bitmap? = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+        ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
 
     private fun playbackStateValue(state: Int?): PlaybackStateValue = when (state) {
         PlaybackState.STATE_NONE -> PlaybackStateValue.NONE
@@ -289,8 +318,7 @@ class MediaSessionListenerService : NotificationListenerService(),
     private fun artworkHash(metadata: MediaMetadata?): String? {
         if (metadata == null) return null
         if (metadata === lastArtMetadata) return lastArtHashValue
-        val bitmap = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-            ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_ART)
+        val bitmap = artworkBitmap(metadata)
         val hash = if (bitmap == null) {
             null
         } else {
@@ -341,19 +369,54 @@ class MediaSessionListenerService : NotificationListenerService(),
                 publishIfChanged(session, publish.topic, publish.payload, publish.retained, force)
             }
         }
-        if (result.encodeArtwork) publishArtwork(controller?.metadata)
+        if (result.encodeArtwork) publishArtwork(controller)
 
         val state = result.publishes.firstOrNull { it.topic == topics.state }?.payload
         if (state == "playing") startPositionLoop() else stopPositionLoop()
     }
 
-    private fun publishArtwork(metadata: MediaMetadata?) {
+    private fun publishArtwork(controller: MediaController?) {
         val session = session ?: return
-        val bitmap = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
-        artworkExecutor.execute {
-            session.publish(session.topics.albumArt, AlbumArt.encodeToBase64(bitmap) ?: "", false)
+        val metadata = controller?.metadata
+        val bitmap = artworkBitmap(metadata)
+        val uri = if (bitmap == null) artworkUri(metadata) else null
+        if (bitmap == null && uri == null) {
+            session.publish(session.topics.albumArt, "", false)
+            return
         }
+        artworkExecutor.execute {
+            val current = session
+            if (current != null) {
+                runCatching {
+                    val encoded = if (bitmap != null) {
+                        AlbumArt.encodeToBase64(bitmap)
+                    } else {
+                        AlbumArt.encodeToBase64(downloadArtwork(uri!!))
+                    }
+                    current.publish(current.topics.albumArt, encoded ?: "", false)
+                }.onFailure { Log.w(TAG, "artwork: ${it.message}") }
+            }
+        }
+    }
+
+    /** Fetches artwork from an http(s) or content:// URI and decodes it to a bitmap. */
+    private fun downloadArtwork(uri: String): Bitmap? = try {
+        val parsed = Uri.parse(uri)
+        val stream = when (parsed.scheme?.lowercase(Locale.US)) {
+            "http", "https" -> {
+                val connection = URL(uri).openConnection() as HttpURLConnection
+                connection.connectTimeout = 5_000
+                connection.readTimeout = 10_000
+                connection.inputStream
+            }
+
+            "content", "file", "android.resource" -> contentResolver.openInputStream(parsed)
+            else -> null
+        }
+        stream?.use { BitmapFactory.decodeStream(it) }
+    } catch (e: Exception) {
+        Log.w(TAG, "Artwork download failed: ${e.message}")
+        null
     }
 
     private fun startPositionLoop() {
@@ -462,6 +525,8 @@ class MediaSessionListenerService : NotificationListenerService(),
     companion object {
         private const val TAG = "Media2HA"
         private const val METADATA_KEY_MIME = "android.media.metadata.MIME"
+        private const val METADATA_KEY_VIDEO_WIDTH = "android.media.metadata.VIDEO_WIDTH"
+        private const val METADATA_KEY_VIDEO_HEIGHT = "android.media.metadata.VIDEO_HEIGHT"
         const val ACTION_RELOAD = "fr.micodes.media2ha.action.RELOAD"
     }
 }

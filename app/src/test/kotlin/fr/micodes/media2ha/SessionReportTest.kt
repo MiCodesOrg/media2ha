@@ -24,6 +24,9 @@ class SessionReportTest {
         artist: String = "artist",
         album: String = "album",
         mime: String? = null,
+        hasVideoSize: Boolean = false,
+        tag: String? = null,
+        pkg: String = "",
         artHash: String? = null,
         volume: Float? = null,
         muted: Boolean = false,
@@ -40,6 +43,9 @@ class SessionReportTest {
         artist = artist,
         album = album,
         mimeType = mime,
+        hasVideoSize = hasVideoSize,
+        sessionTag = tag,
+        packageName = pkg,
         artworkHash = artHash,
         volumeLevel = volume,
         muted = muted,
@@ -100,6 +106,52 @@ class SessionReportTest {
         assertEquals("video", payload(SessionReport(topics).report(session(mime = "video/mp4")).publishes, topics.mediatype))
         assertEquals("music", payload(SessionReport(topics).report(session(mime = "audio/mpeg")).publishes, topics.mediatype))
         assertEquals("music", payload(SessionReport(topics).report(session(mime = null)).publishes, topics.mediatype))
+    }
+
+    @Test
+    fun `video is detected without a mime type`() {
+        assertEquals(
+            "video",
+            payload(SessionReport(topics).report(session(hasVideoSize = true)).publishes, topics.mediatype),
+        )
+        assertEquals(
+            "video",
+            payload(SessionReport(topics).report(session(tag = "video")).publishes, topics.mediatype),
+        )
+        assertEquals(
+            "video",
+            payload(SessionReport(topics).report(session(pkg = "com.plexapp.android")).publishes, topics.mediatype),
+        )
+    }
+
+    @Test
+    fun `a plex film with artist and album is still video`() {
+        val result = SessionReport(topics).report(
+            session(
+                title = "Dix Pour Cent ! Le Film",
+                artist = "Studiocanal",
+                album = "Saison 4",
+                pkg = "com.plexapp.android",
+                tag = "video",
+            )
+        )
+        assertEquals("video", payload(result.publishes, topics.mediatype))
+    }
+
+    @Test
+    fun `the video tag is matched case-insensitively`() {
+        assertEquals(
+            "video",
+            payload(SessionReport(topics).report(session(tag = "Video")).publishes, topics.mediatype),
+        )
+    }
+
+    @Test
+    fun `an unknown app with no video signal stays music`() {
+        val result = SessionReport(topics).report(
+            session(pkg = "com.spotify.music", tag = "music", artist = "Shakira")
+        )
+        assertEquals("music", payload(result.publishes, topics.mediatype))
     }
 
     @Test
