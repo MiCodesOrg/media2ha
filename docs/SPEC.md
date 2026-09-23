@@ -57,6 +57,10 @@ Référence : [issue #8](https://github.com/MiCodesOrg/media2ha/issues/8).
 | Album art | `.../albumart` (base64 JPEG) | non |
 | Muet | `.../mute` (`mute`/`unmute`) | oui |
 | Source (app) | `.../source` | oui |
+| Résumé | `.../summary` | oui |
+| Saison / Épisode | `.../season`, `.../episode` | oui |
+| Série | `.../series` | oui |
+| Année | `.../year` | oui |
 | Commandes | `.../cmd/{play,pause,playpause,next,previous}` | — |
 | Volume (cmd) | `.../cmd/volume` (float 0.0–1.0) | — |
 
@@ -100,6 +104,11 @@ Référence : [issue #8](https://github.com/MiCodesOrg/media2ha/issues/8).
   "command_turn_off_payload": "off",
   "state_mute_topic": "media2ha/<device_id>/mute",
   "state_source_topic": "media2ha/<device_id>/source",
+  "state_summary_topic": "media2ha/<device_id>/summary",
+  "state_season_topic": "media2ha/<device_id>/season",
+  "state_episode_topic": "media2ha/<device_id>/episode",
+  "state_series_topic": "media2ha/<device_id>/series",
+  "state_year_topic": "media2ha/<device_id>/year",
   "device": {
     "identifiers": ["<device_id>"],
     "name": "<nom affiché>",
@@ -127,6 +136,7 @@ Référence : [issue #7](https://github.com/MiCodesOrg/media2ha/issues/7). Une s
 
 - **Jamais `off`** ; sans session active → `idle` + métadonnées effacées. `unavailable` vient du LWT.
 - Champs : `title`, `artist`, `album`, `duration` (int s), `position` (int s), `mediatype` (`music`/`video`), `volume` (0.0–1.0), `mute` (`mute`/`unmute`), `source` (nom de l'app).
+- Détails TV (best-effort, vides si absents) : `summary` depuis `DISPLAY_DESCRIPTION` ; `season`/`episode` depuis `DISPLAY_SUBTITLE` (`S1E2`, `1x02`, …) ; `season` repli sur `ALBUM` (« Season 4 » → `4`, vidéo seulement) ; `series` = `ARTIST` en vidéo ; `year` depuis `METADATA_KEY_YEAR`. Exposés côté HA en `media_summary`, `media_season`, `media_episode`, `media_series_title`, `media_year`.
 - Position : publiée aux changements (play/pause/seek/piste) + resync toutes les 30 s en lecture ; non retained.
 - Valeurs absentes → payload vide (`duration == 0`/inconnue → vide).
 

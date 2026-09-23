@@ -266,6 +266,9 @@ class MediaSessionListenerService : NotificationListenerService(),
             title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty(),
             artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty(),
             album = metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM).orEmpty(),
+            subtitle = metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE),
+            summary = metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION).orEmpty(),
+            year = metadata?.getLong(MediaMetadata.METADATA_KEY_YEAR)?.takeIf { it > 0 }?.toString().orEmpty(),
             mimeType = metadata?.getString(METADATA_KEY_MIME),
             hasVideoSize = metadata != null &&
                 (

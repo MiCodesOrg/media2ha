@@ -15,6 +15,9 @@ data class SessionSnapshot(
     val title: String = "",
     val artist: String = "",
     val album: String = "",
+    val subtitle: String? = null,
+    val summary: String = "",
+    val year: String = "",
     val mimeType: String? = null,
     val hasVideoSize: Boolean = false,
     val sessionTag: String? = null,
@@ -75,7 +78,17 @@ class SessionReport(private val topics: Topics) {
             if (snapshot.durationMs > 0) (snapshot.durationMs / 1000).toString() else "",
             true,
         )
-        publishes += Publish(topics.mediatype, mediaType(snapshot), true)
+        val kind = mediaType(snapshot)
+        publishes += Publish(topics.mediatype, kind, true)
+        publishes += Publish(topics.summary, snapshot.summary, true)
+        publishes += Publish(
+            topics.season,
+            MediaDetails.season(snapshot.subtitle, if (kind == "video") snapshot.album else null).orEmpty(),
+            true,
+        )
+        publishes += Publish(topics.episode, MediaDetails.episode(snapshot.subtitle).orEmpty(), true)
+        publishes += Publish(topics.series, if (kind == "video") snapshot.artist else "", true)
+        publishes += Publish(topics.year, snapshot.year, true)
         publishes += Publish(topics.mute, if (snapshot.muted) "mute" else "unmute", true)
         publishes += Publish(topics.source, snapshot.sourceLabel, true)
         snapshot.volumeLevel?.let { publishes += Publish(topics.volume, formatLevel(it), true) }
@@ -110,6 +123,11 @@ class SessionReport(private val topics: Topics) {
             Publish(topics.position, "", false),
             Publish(topics.albumArt, "", false),
             Publish(topics.source, "", true),
+            Publish(topics.summary, "", true),
+            Publish(topics.season, "", true),
+            Publish(topics.episode, "", true),
+            Publish(topics.series, "", true),
+            Publish(topics.year, "", true),
         )
         reset()
         return Report(publishes, encodeArtwork = false)

@@ -55,6 +55,11 @@ class HomeAssistantSessionTest {
                 topics.albumArt,
                 topics.mute,
                 topics.source,
+                topics.summary,
+                topics.season,
+                topics.episode,
+                topics.series,
+                topics.year,
             ),
             publishes.map { it.topic },
         )

@@ -23,6 +23,9 @@ class SessionReportTest {
         title: String = "title",
         artist: String = "artist",
         album: String = "album",
+        subtitle: String? = null,
+        summary: String = "",
+        year: String = "",
         mime: String? = null,
         hasVideoSize: Boolean = false,
         tag: String? = null,
@@ -42,6 +45,9 @@ class SessionReportTest {
         title = title,
         artist = artist,
         album = album,
+        subtitle = subtitle,
+        summary = summary,
+        year = year,
         mimeType = mime,
         hasVideoSize = hasVideoSize,
         sessionTag = tag,
@@ -86,6 +92,11 @@ class SessionReportTest {
         assertEquals("", payload(result.publishes, topics.position))
         assertEquals("", payload(result.publishes, topics.albumArt))
         assertEquals("", payload(result.publishes, topics.source))
+        assertEquals("", payload(result.publishes, topics.summary))
+        assertEquals("", payload(result.publishes, topics.season))
+        assertEquals("", payload(result.publishes, topics.episode))
+        assertEquals("", payload(result.publishes, topics.series))
+        assertEquals("", payload(result.publishes, topics.year))
         assertFalse(result.encodeArtwork)
     }
 
@@ -152,6 +163,48 @@ class SessionReportTest {
             session(pkg = "com.spotify.music", tag = "music", artist = "Shakira")
         )
         assertEquals("music", payload(result.publishes, topics.mediatype))
+    }
+
+    @Test
+    fun `summary and year are published`() {
+        val result = SessionReport(topics).report(session(summary = "Un résumé", year = "2024"))
+        assertEquals("Un résumé", payload(result.publishes, topics.summary))
+        assertEquals("2024", payload(result.publishes, topics.year))
+    }
+
+    @Test
+    fun `season and episode come from the display subtitle`() {
+        val result = SessionReport(topics).report(session(subtitle = "S1E2"))
+        assertEquals("1", payload(result.publishes, topics.season))
+        assertEquals("2", payload(result.publishes, topics.episode))
+    }
+
+    @Test
+    fun `a plex season falls back to the album`() {
+        val result = SessionReport(topics).report(
+            session(album = "Season 4", pkg = "com.plexapp.android")
+        )
+        assertEquals("4", payload(result.publishes, topics.season))
+        assertEquals("", payload(result.publishes, topics.episode))
+    }
+
+    @Test
+    fun `a music album is never read as a season`() {
+        val result = SessionReport(topics).report(
+            session(album = "Season 4", pkg = "com.spotify.music", tag = "music")
+        )
+        assertEquals("", payload(result.publishes, topics.season))
+    }
+
+    @Test
+    fun `the series title is the artist for videos only`() {
+        val video = SessionReport(topics).report(
+            session(artist = "La Chronique des Bridgerton", album = "Season 4", pkg = "com.plexapp.android")
+        )
+        assertEquals("La Chronique des Bridgerton", payload(video.publishes, topics.series))
+
+        val music = SessionReport(topics).report(session(artist = "Shakira", pkg = "com.spotify.music", tag = "music"))
+        assertEquals("", payload(music.publishes, topics.series))
     }
 
     @Test

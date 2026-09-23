@@ -30,6 +30,11 @@ class DiscoveryTest {
         assertEquals(discovery.topics.state, payload.getString("state_state_topic"))
         assertEquals(discovery.topics.mute, payload.getString("state_mute_topic"))
         assertEquals(discovery.topics.source, payload.getString("state_source_topic"))
+        assertEquals(discovery.topics.summary, payload.getString("state_summary_topic"))
+        assertEquals(discovery.topics.season, payload.getString("state_season_topic"))
+        assertEquals(discovery.topics.episode, payload.getString("state_episode_topic"))
+        assertEquals(discovery.topics.series, payload.getString("state_series_topic"))
+        assertEquals(discovery.topics.year, payload.getString("state_year_topic"))
         assertEquals(discovery.topics.cmdTurnOff, payload.getString("command_turn_off_topic"))
         assertEquals("off", payload.getString("command_turn_off_payload"))
 

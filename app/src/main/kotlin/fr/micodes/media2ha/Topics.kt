@@ -16,6 +16,11 @@ class Topics(deviceId: String, discoveryPrefix: String = "homeassistant") {
     val albumArt = "$base/albumart"
     val mute = "$base/mute"
     val source = "$base/source"
+    val summary = "$base/summary"
+    val season = "$base/season"
+    val episode = "$base/episode"
+    val series = "$base/series"
+    val year = "$base/year"
 
     val cmd = "$base/cmd"
     val cmdPlay = "$cmd/play"

@@ -70,6 +70,10 @@ Namespace runtime : `media2ha/<device_id>`.
 | Pochette | `.../albumart` (base64 JPEG, 512 px max) | non |
 | Muet | `.../mute` (`mute`/`unmute`) | oui |
 | Source (app) | `.../source` | oui |
+| Résumé | `.../summary` | oui |
+| Saison / Épisode | `.../season`, `.../episode` | oui |
+| Série | `.../series` | oui |
+| Année | `.../year` | oui |
 | Commandes | `.../cmd/<action>` | — |
 
 États publiés : `playing`, `paused`, `stopped`, `idle` (jamais `off`). Sans session active : `idle` et métadonnées effacées.
