@@ -20,8 +20,16 @@ import android.service.notification.NotificationListenerService
 import android.util.Log
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.util.Locale
 import java.util.concurrent.Executors
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 /**
  * Adapter: observes the Android media sessions and the MQTT connection, feeds plain
@@ -53,6 +61,20 @@ class MediaSessionListenerService : NotificationListenerService(),
     private var positionLoopRunning = false
 
     private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
+
+    /**
+     * Accepts an untrusted certificate. Only ever applied to [Artwork.allowsUntrustedCertificate]
+     * hosts (Plex direct-connect, LAN): their chain is valid but old CA stores reject it, and
+     * the payload is a poster, not a secret.
+     */
+    private val permissiveSslSocketFactory: SSLSocketFactory by lazy {
+        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
+            override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
+            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+        })
+        SSLContext.getInstance("TLS").apply { init(null, trustAll, SecureRandom()) }.socketFactory
+    }
 
     /** Republish state when the device volume changes (fallback sessions). */
     private val volumeObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
@@ -272,6 +294,7 @@ class MediaSessionListenerService : NotificationListenerService(),
 
     private fun artworkBitmap(metadata: MediaMetadata?): Bitmap? = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
         ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+        ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
 
     private fun playbackStateValue(state: Int?): PlaybackStateValue = when (state) {
         PlaybackState.STATE_NONE -> PlaybackStateValue.NONE
@@ -411,13 +434,22 @@ class MediaSessionListenerService : NotificationListenerService(),
                 val connection = URL(uri).openConnection() as HttpURLConnection
                 connection.connectTimeout = 5_000
                 connection.readTimeout = 10_000
+                if (connection is HttpsURLConnection && Artwork.allowsUntrustedCertificate(connection.url.host)) {
+                    connection.sslSocketFactory = permissiveSslSocketFactory
+                    connection.hostnameVerifier = HostnameVerifier { _, _ -> true }
+                }
                 connection.inputStream
             }
 
             "content", "file", "android.resource" -> contentResolver.openInputStream(parsed)
-            else -> null
+            else -> {
+                Log.w(TAG, "Artwork scheme unsupported: ${parsed.scheme}")
+                null
+            }
         }
-        stream?.use { BitmapFactory.decodeStream(it) }
+        stream?.use { BitmapFactory.decodeStream(it) }.also {
+            if (it == null) Log.w(TAG, "Artwork undecodable: $uri")
+        }
     } catch (e: Exception) {
         Log.w(TAG, "Artwork download failed: ${e.message}")
         null
